@@ -17,3 +17,6 @@ DerivedData/
 # editors
 .idea
 .vscode/settings.json
+
+# design files (may embed licensed fonts)
+*.sketch

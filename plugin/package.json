@@ -23,5 +23,6 @@
     "@babel/runtime": "^7.29.2",
     "@skpm/fs": "^0.2.6"
   },
-  "author": "Isaac Shea <isaac_shea@icloud.com>"
+  "author": "Isaac Shea <isaac_shea@icloud.com>",
+  "license": "MIT"
 }
