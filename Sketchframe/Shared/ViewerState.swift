@@ -91,8 +91,8 @@ final class ViewerState {
     var expandedNodeIDs: Set<SketchframeNode.ID>
 
     var draft: AnnotationDraft?
-    /// Annotations can only be written where the package can be saved (not
-    /// in Quick Look).
+    /// Annotations can only be written when the package's location is known,
+    /// so they can be saved.
     let canEditAnnotations: Bool
 
     init(canEditAnnotations: Bool, expandedNodeIDs: Set<SketchframeNode.ID> = []) {

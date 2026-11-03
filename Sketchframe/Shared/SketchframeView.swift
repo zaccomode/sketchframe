@@ -1,50 +1,28 @@
 import SwiftUI
 import AppKit
 
-/// A Sketchframe package: the zoomable preview, and a sidebar showing either
-/// the inspector or annotations.
-///
-/// In a window, the sidebar is a native inspector column toggled from the
-/// toolbar, and annotations are saved into the package as they change. In
-/// Quick Look there's no toolbar, so the sidebar is always shown and
-/// annotations are read-only.
+/// A Sketchframe package in a window: the zoomable preview, and a native
+/// inspector column showing either the inspector or annotations, toggled from
+/// the toolbar. Annotations are saved into the package as they change.
 struct SketchframeView: View {
-    enum Presentation {
-        /// `packageURL` is where annotations are saved; `nil` makes them read-only.
-        case window(packageURL: URL?)
-        case quickLook
-    }
-
     let package: SketchframePackage
-    let presentation: Presentation
+    /// Where annotations are saved; `nil` makes them read-only.
+    let packageURL: URL?
     private let previewImage: NSImage?
 
     @State private var state: ViewerState
     @State private var annotations: [SketchframeAnnotation]
     @State private var saveError: String?
 
-    init(package: SketchframePackage, presentation: Presentation) {
+    init(package: SketchframePackage, packageURL: URL?) {
         self.package = package
-        self.presentation = presentation
+        self.packageURL = packageURL
         self.previewImage = package.previewData.flatMap(NSImage.init(data:))
-
-        let canEdit = if case .window(let url) = presentation { url != nil } else { false }
-        _state = State(initialValue: ViewerState(canEditAnnotations: canEdit, expandedNodeIDs: [package.root.id]))
+        _state = State(initialValue: ViewerState(canEditAnnotations: packageURL != nil, expandedNodeIDs: [package.root.id]))
         _annotations = State(initialValue: package.annotations)
     }
 
     var body: some View {
-        switch presentation {
-        case .window(let packageURL):
-            windowLayout(packageURL: packageURL)
-        case .quickLook:
-            quickLookLayout
-        }
-    }
-
-    // MARK: Layouts
-
-    private func windowLayout(packageURL: URL?) -> some View {
         @Bindable var state = state
         return canvas(showsBadges: state.isShowing(.annotations))
             .inspector(isPresented: $state.isSidebarShown) {
@@ -71,28 +49,6 @@ struct SketchframeView: View {
             } message: { message in
                 Text(message)
             }
-    }
-
-    private var quickLookLayout: some View {
-        @Bindable var state = state
-        return HStack(spacing: 0) {
-            canvas(showsBadges: true)
-            Divider()
-            VStack(spacing: 0) {
-                if !annotations.isEmpty {
-                    Picker("Sidebar", selection: $state.sidebarMode) {
-                        Text("Inspector").tag(SidebarMode.inspector)
-                        Text("Annotations").tag(SidebarMode.annotations)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .padding(.horizontal, 10)
-                    .padding(.top, 8)
-                }
-                sidebar
-            }
-            .frame(width: 300)
-        }
     }
 
     private func canvas(showsBadges: Bool) -> some View {

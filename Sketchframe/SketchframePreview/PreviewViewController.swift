@@ -7,10 +7,9 @@
 
 import Cocoa
 import Quartz
-import SwiftUI
 
-/// Quick Look preview for `.sketchframe` packages: hosts the shared
-/// `SketchframeView`.
+/// Quick Look preview for `.sketchframe` packages: just the frame's preview
+/// image. The inspector and annotations live in the app.
 class PreviewViewController: NSViewController, QLPreviewingController {
 
     override func loadView() {
@@ -18,17 +17,24 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     }
 
     func preparePreviewOfFile(at url: URL) async throws {
-        let package = try SketchframePackage(contentsOf: url)
+        let designData = try? Data(contentsOf: url.appending(path: SketchframePackage.designFileName))
+        let previewFileName = designData.map(SketchframePackage.previewFileName(in:))
+            ?? SketchframePackage.defaultPreviewFileName
+        guard
+            let data = try? Data(contentsOf: url.appending(path: previewFileName)),
+            let bitmap = NSBitmapImageRep(data: data),
+            let image = bitmap.cgImage
+        else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
 
-        let hostingView = NSHostingView(rootView: SketchframeView(package: package, presentation: .quickLook))
-        hostingView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(hostingView)
-        NSLayoutConstraint.activate([
-            hostingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            hostingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            hostingView.topAnchor.constraint(equalTo: view.topAnchor),
-            hostingView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        preferredContentSize = NSSize(width: 1210, height: 836)
+        // Drawn by the layer, aspect-fit to whatever size Quick Look gives the
+        // view, so the whole frame is always visible.
+        view.wantsLayer = true
+        view.layer?.contents = image
+        view.layer?.contentsGravity = .resizeAspect
+
+        // The preview is rendered at 2x; ask for its size in points.
+        preferredContentSize = NSSize(width: bitmap.pixelsWide / 2, height: bitmap.pixelsHigh / 2)
     }
 }
