@@ -2,6 +2,7 @@ import sketch from "sketch";
 import * as dom from "sketch/dom";
 import { cssColor } from "./utils/color";
 import { enumKey } from "./utils/enums";
+import { hash } from "./utils/hash";
 import { round, clean, isEmpty } from "./utils/math";
 import { convertFills, convertBorders, convertBorderOptions, blendMode } from "./convert/paint";
 import { convertEffects } from "./convert/effects";
@@ -29,7 +30,9 @@ export function walk(layer, ctx, parent) {
 
   const isRoot = !parent;
   const frame = layer.frame;
-  const node = { id: ctx.nextId(), name: layer.name, type };
+  // `sketchId` is a short, stable hash of the Sketch layer ID, so annotations
+  // can be re-attached after a re-export renumbers the `n…` ids.
+  const node = { id: ctx.nextId(), sketchId: hash(String(layer.id)), name: layer.name, type };
   if (!isRoot) {
     node.x = round(frame.x);
     node.y = round(frame.y);

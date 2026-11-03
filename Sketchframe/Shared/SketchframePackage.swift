@@ -4,10 +4,20 @@ import CoreGraphics
 /// A layer from `design.json`, positioned in the root frame's coordinate space.
 nonisolated struct SketchframeNode: Identifiable, Hashable, Sendable {
     let id: String
+    /// Stable hash of the Sketch layer ID; survives re-exports.
+    let sketchID: String?
     let name: String
     let type: String
+    /// Layer names from the root's children down to this node (empty for the root).
+    let path: [String]
     /// For instances: the key of the symbol in `SketchframePackage.components`.
     let componentID: String?
+    /// Name of the Sketch shared layer or text style applied to this node.
+    let sharedStyle: String?
+    /// Keys into design.json's `styles` map that this node references.
+    let styleKeys: [String]
+    /// Color token names referenced anywhere in this node's style.
+    let tokens: Set<String>
     /// The node's unrotated size, in points.
     let size: CGSize
     /// Maps the node's local space (0,0 to width,height) into the root
@@ -18,6 +28,8 @@ nonisolated struct SketchframeNode: Identifiable, Hashable, Sendable {
     let children: [SketchframeNode]?
     /// The node's own JSON (without children), with shared style keys resolved.
     let details: String
+    /// Just the node's style fields as JSON, for describing its shared style.
+    let styleDetails: String
 
     /// Top-left, top-right, bottom-right, bottom-left in root coordinates.
     var corners: [CGPoint] {
@@ -29,9 +41,31 @@ nonisolated struct SketchframeNode: Identifiable, Hashable, Sendable {
         ].map { $0.applying(transform) }
     }
 
+    var displayName: String { name.isEmpty ? type : name }
+
+    var symbolName: String {
+        switch type {
+        case "frame": "square.dashed"
+        case "graphic": "square.on.circle"
+        case "group": "folder"
+        case "instance": "diamond"
+        case "text": "textformat"
+        case "image": "photo"
+        case "rectangle": "rectangle"
+        case "oval": "circle"
+        case "vector": "scribble"
+        default: "square"
+        }
+    }
+
     func contains(_ point: CGPoint) -> Bool {
         let local = point.applying(transform.inverted())
         return CGRect(origin: .zero, size: size).contains(local)
+    }
+
+    /// This node and all of its descendants, depth first.
+    var allNodes: [SketchframeNode] {
+        [self] + (children ?? []).flatMap(\.allNodes)
     }
 
     static func == (lhs: SketchframeNode, rhs: SketchframeNode) -> Bool {
@@ -64,6 +98,46 @@ nonisolated struct SketchframeComponent: Identifiable, Hashable, Sendable {
     }
 }
 
+/// A Sketch shared style, or a style value the exporter deduplicated into
+/// design.json's `styles` map.
+nonisolated struct SketchframeStyle: Identifiable, Hashable, Sendable {
+    enum Kind: Hashable, Sendable {
+        /// A named Sketch shared layer or text style.
+        case shared
+        /// A value reused by several layers (a key in `styles`).
+        case reused
+    }
+
+    let id: String
+    let name: String
+    let kind: Kind
+    /// For reused values: `fill`, `border`, `effect`, `corner`, `layout` or `text`.
+    let category: String?
+    let details: String
+    let nodeIDs: [SketchframeNode.ID]
+
+    var symbolName: String {
+        switch category {
+        case "fill": "paintbrush"
+        case "border": "square.dashed"
+        case "effect": "shadow"
+        case "corner": "square.on.square"
+        case "layout": "rectangle.split.3x1"
+        case "text": "textformat"
+        default: "paintbrush.pointed"
+        }
+    }
+}
+
+/// A color variable (Sketch swatch) used in the frame.
+nonisolated struct SketchframeColorToken: Identifiable, Hashable, Sendable {
+    var id: String { name }
+    let name: String
+    /// CSS color, e.g. `#3b5bdb` or `rgba(0, 0, 0, 0.5)`.
+    let value: String
+    let nodeIDs: [SketchframeNode.ID]
+}
+
 nonisolated enum SketchframeError: LocalizedError {
     case missingDesign
     case invalidDesign
@@ -76,22 +150,29 @@ nonisolated enum SketchframeError: LocalizedError {
     }
 }
 
-/// A `.sketchframe` package: `design.json`, a preview PNG and assets.
-/// See docs/FORMAT.md.
+/// A `.sketchframe` package: `design.json`, a preview PNG, assets and
+/// (optionally) `annotations.json`. See docs/FORMAT.md.
 nonisolated struct SketchframePackage: Sendable {
     static let designFileName = "design.json"
     static let defaultPreviewFileName = "preview@2x.png"
 
     /// Style fields that may hold a key into the top-level `styles` map.
     private static let styleFields = ["fills", "borders", "effects", "corners", "layout", "textStyle"]
+    /// Fields that describe a node's appearance (shown for shared styles).
+    private static let appearanceFields = [
+        "fills", "borders", "borderOptions", "effects", "corners", "textStyle", "opacity", "blendMode",
+    ]
 
     let name: String
     let root: SketchframeNode
     /// Symbols used in the frame, sorted by name.
     let components: [SketchframeComponent]
+    /// Sketch shared styles first, then reused values.
+    let styles: [SketchframeStyle]
+    let colorTokens: [SketchframeColorToken]
+    /// As saved in `annotations.json` when the package was opened.
+    let annotations: [SketchframeAnnotation]
     let nodeCount: Int
-    let styleCount: Int
-    let tokenCount: Int
     let previewData: Data?
     /// Preview size in points (pixels ÷ scale). Can be larger than the root
     /// frame when shadows overflow its bounds.
@@ -106,7 +187,12 @@ nonisolated struct SketchframePackage: Sendable {
             throw SketchframeError.missingDesign
         }
         let previewURL = url.appending(path: Self.previewFileName(in: designData))
-        try self.init(designData: designData, previewData: try? Data(contentsOf: previewURL))
+        let annotationsURL = url.appending(path: SketchframeAnnotationsFile.fileName)
+        try self.init(
+            designData: designData,
+            previewData: try? Data(contentsOf: previewURL),
+            annotationsData: try? Data(contentsOf: annotationsURL)
+        )
     }
 
     init(fileWrapper: FileWrapper) throws {
@@ -114,11 +200,14 @@ nonisolated struct SketchframePackage: Sendable {
         guard let designData = files[Self.designFileName]?.regularFileContents else {
             throw SketchframeError.missingDesign
         }
-        let previewData = files[Self.previewFileName(in: designData)]?.regularFileContents
-        try self.init(designData: designData, previewData: previewData)
+        try self.init(
+            designData: designData,
+            previewData: files[Self.previewFileName(in: designData)]?.regularFileContents,
+            annotationsData: files[SketchframeAnnotationsFile.fileName]?.regularFileContents
+        )
     }
 
-    private init(designData: Data, previewData: Data?) throws {
+    private init(designData: Data, previewData: Data?, annotationsData: Data?) throws {
         guard
             let design = try? JSONSerialization.jsonObject(with: designData) as? [String: Any],
             design["format"] as? String == "sketchframe",
@@ -127,9 +216,10 @@ nonisolated struct SketchframePackage: Sendable {
             throw SketchframeError.invalidDesign
         }
 
-        let styles = design["styles"] as? [String: Any] ?? [:]
+        let styleValues = design["styles"] as? [String: Any] ?? [:]
         var nodeCount = 0
-        let root = Self.node(from: rootObject, parentTransform: nil, styles: styles, count: &nodeCount)
+        let root = Self.node(from: rootObject, parentTransform: nil, path: nil, styles: styleValues, count: &nodeCount)
+        let frameNodes = root.allNodes
 
         let preview = design["preview"] as? [String: Any] ?? [:]
         let scale = Self.number(preview["scale"]) ?? 2
@@ -139,12 +229,8 @@ nonisolated struct SketchframePackage: Sendable {
                 height: Self.number(preview["pixelHeight"]) ?? root.size.height * scale
             )
 
-        let tokens = design["tokens"] as? [String: Any] ?? [:]
-        let colorTokens = tokens["colors"] as? [String: Any] ?? [:]
-
         // Component definitions live outside the frame, in their own
         // coordinate space; their layers don't count towards `nodeCount`.
-        let instances = Self.instancesByComponent(in: root)
         var componentNodeCount = 0
         let components = (design["components"] as? [String: Any] ?? [:])
             .compactMap { key, value -> SketchframeComponent? in
@@ -156,8 +242,21 @@ nonisolated struct SketchframePackage: Sendable {
                     id: key,
                     name: object["name"] as? String ?? "",
                     library: object["library"] as? String,
-                    root: Self.node(from: rootObject, parentTransform: nil, styles: styles, count: &componentNodeCount),
-                    instances: instances[key] ?? []
+                    root: Self.node(
+                        from: rootObject, parentTransform: nil, path: nil, styles: styleValues, count: &componentNodeCount
+                    ),
+                    instances: frameNodes.filter { $0.componentID == key }
+                )
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+
+        let tokens = design["tokens"] as? [String: Any] ?? [:]
+        let colorTokens = (tokens["colors"] as? [String: Any] ?? [:])
+            .map { name, value in
+                SketchframeColorToken(
+                    name: name,
+                    value: value as? String ?? "",
+                    nodeIDs: frameNodes.filter { $0.tokens.contains(name) }.map(\.id)
                 )
             }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -165,16 +264,17 @@ nonisolated struct SketchframePackage: Sendable {
         self.name = design["name"] as? String ?? root.name
         self.root = root
         self.components = components
+        self.styles = Self.sharedStyles(in: frameNodes) + Self.reusedStyles(styleValues, in: frameNodes)
+        self.colorTokens = colorTokens
+        self.annotations = SketchframeAnnotationsFile.decode(annotationsData)
         self.nodeCount = nodeCount
-        self.styleCount = styles.count
-        self.tokenCount = colorTokens.count
         let previewSize = CGSize(width: pixelSize.width / scale, height: pixelSize.height / scale)
         self.previewData = previewData
         self.previewSize = previewSize
         self.frameOrigin = Self.frameOrigin(
             preview: preview,
             root: rootObject,
-            styles: styles,
+            styles: styleValues,
             overflow: CGSize(
                 width: previewSize.width - root.size.width,
                 height: previewSize.height - root.size.height
@@ -182,6 +282,8 @@ nonisolated struct SketchframePackage: Sendable {
         )
         self.designJSON = String(decoding: designData, as: UTF8.self)
     }
+
+    // MARK: Lookup
 
     /// The deepest node under `point` (in root coordinates), preferring
     /// nodes painted on top.
@@ -202,6 +304,22 @@ nonisolated struct SketchframePackage: Sendable {
         Self.find(id, in: root) ?? components.lazy.compactMap { Self.find(id, in: $0.root) }.first
     }
 
+    /// Ids of the nodes above `id` (root first) in the frame or in the
+    /// component definition that contains it. Empty if `id` isn't found.
+    func ancestorIDs(of id: SketchframeNode.ID) -> [SketchframeNode.ID] {
+        func search(_ node: SketchframeNode, trail: [SketchframeNode.ID]) -> [SketchframeNode.ID]? {
+            if node.id == id { return trail }
+            for child in node.children ?? [] {
+                if let found = search(child, trail: trail + [node.id]) { return found }
+            }
+            return nil
+        }
+        for root in [root] + components.map(\.root) {
+            if let trail = search(root, trail: []) { return trail }
+        }
+        return []
+    }
+
     /// The component whose definition contains `nodeID`, if any.
     func component(containing nodeID: SketchframeNode.ID) -> SketchframeComponent? {
         components.first { Self.find(nodeID, in: $0.root) != nil }
@@ -209,6 +327,31 @@ nonisolated struct SketchframePackage: Sendable {
 
     func component(withID id: SketchframeComponent.ID) -> SketchframeComponent? {
         components.first { $0.id == id }
+    }
+
+    func style(withID id: SketchframeStyle.ID) -> SketchframeStyle? {
+        styles.first { $0.id == id }
+    }
+
+    func colorToken(named name: String) -> SketchframeColorToken? {
+        colorTokens.first { $0.name == name }
+    }
+
+    /// The frame layer an annotation belongs to: by Sketch ID, then by layer
+    /// path, then by the node id it was written against (if the name still
+    /// matches). `nil` if the layer is gone.
+    func node(for annotation: SketchframeAnnotation) -> SketchframeNode? {
+        let nodes = root.allNodes
+        if let sketchID = annotation.sketchId, let node = nodes.first(where: { $0.sketchID == sketchID }) {
+            return node
+        }
+        if !annotation.layerPath.isEmpty, let node = nodes.first(where: { $0.path == annotation.layerPath }) {
+            return node
+        }
+        if let node = Self.find(annotation.nodeId, in: root), node.name == annotation.layerName {
+            return node
+        }
+        return nil
     }
 
     private static func find(_ id: SketchframeNode.ID, in node: SketchframeNode) -> SketchframeNode? {
@@ -219,17 +362,6 @@ nonisolated struct SketchframePackage: Sendable {
         return nil
     }
 
-    /// Every instance node in the frame, keyed by component ID, in paint order.
-    private static func instancesByComponent(in root: SketchframeNode) -> [String: [SketchframeNode]] {
-        var result: [String: [SketchframeNode]] = [:]
-        func visit(_ node: SketchframeNode) {
-            if let componentID = node.componentID { result[componentID, default: []].append(node) }
-            node.children?.forEach(visit)
-        }
-        visit(root)
-        return result
-    }
-
     /// Reads `preview.src` from design.json without fully parsing the tree.
     static func previewFileName(in designData: Data) -> String {
         let design = try? JSONSerialization.jsonObject(with: designData) as? [String: Any]
@@ -237,14 +369,19 @@ nonisolated struct SketchframePackage: Sendable {
         return preview?["src"] as? String ?? defaultPreviewFileName
     }
 
+    // MARK: Parsing
+
     private static func node(
         from object: [String: Any],
         parentTransform: CGAffineTransform?,
+        path parentPath: [String]?,
         styles: [String: Any],
         count: inout Int
     ) -> SketchframeNode {
         count += 1
         let size = CGSize(width: number(object["width"]) ?? 0, height: number(object["height"]) ?? 0)
+        let name = object["name"] as? String ?? ""
+        let path = parentPath.map { $0 + [name] } ?? []
 
         // The root defines the coordinate space, so its own position and
         // rotation are ignored. Other nodes rotate and flip around the centre
@@ -266,26 +403,101 @@ nonisolated struct SketchframePackage: Sendable {
 
         var details = object
         details.removeValue(forKey: "children")
+        var styleKeys: [String] = []
         for field in styleFields {
             if let key = details[field] as? String, let style = styles[key] {
+                styleKeys.append(key)
                 details[field] = style
             }
         }
+        let appearance = details.filter { appearanceFields.contains($0.key) }
 
         let children = (object["children"] as? [[String: Any]])?.map {
-            node(from: $0, parentTransform: transform, styles: styles, count: &count)
+            node(from: $0, parentTransform: transform, path: path, styles: styles, count: &count)
         }
 
         return SketchframeNode(
             id: object["id"] as? String ?? UUID().uuidString,
-            name: object["name"] as? String ?? "",
+            sketchID: object["sketchId"] as? String,
+            name: name,
             type: object["type"] as? String ?? "group",
+            path: path,
             componentID: object["componentId"] as? String,
+            sharedStyle: object["sharedStyle"] as? String,
+            styleKeys: styleKeys,
+            tokens: tokenNames(in: details),
             size: size,
             transform: transform,
             children: children?.isEmpty == false ? children : nil,
-            details: prettyJSON(details)
+            details: prettyJSON(details),
+            styleDetails: prettyJSON(appearance)
         )
+    }
+
+    /// Values of every `token` / `colorToken` key, at any depth.
+    private static func tokenNames(in value: Any) -> Set<String> {
+        switch value {
+        case let object as [String: Any]:
+            var names = Set<String>()
+            for (key, child) in object {
+                if key == "token" || key == "colorToken", let name = child as? String {
+                    names.insert(name)
+                } else {
+                    names.formUnion(tokenNames(in: child))
+                }
+            }
+            return names
+        case let array as [Any]:
+            return array.reduce(into: Set<String>()) { $0.formUnion(tokenNames(in: $1)) }
+        default:
+            return []
+        }
+    }
+
+    /// Named Sketch shared styles, described by the first layer that uses each.
+    private static func sharedStyles(in nodes: [SketchframeNode]) -> [SketchframeStyle] {
+        var order: [String] = []
+        var users: [String: [SketchframeNode]] = [:]
+        for node in nodes {
+            guard let name = node.sharedStyle else { continue }
+            if users[name] == nil { order.append(name) }
+            users[name, default: []].append(node)
+        }
+        return order
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+            .map { name in
+                let nodes = users[name] ?? []
+                return SketchframeStyle(
+                    id: "shared:\(name)",
+                    name: name,
+                    kind: .shared,
+                    category: nodes.first?.type == "text" ? "text" : nil,
+                    details: nodes.first?.styleDetails ?? "",
+                    nodeIDs: nodes.map(\.id)
+                )
+            }
+    }
+
+    /// Values in design.json's `styles` map, grouped by kind.
+    private static func reusedStyles(_ styles: [String: Any], in nodes: [SketchframeNode]) -> [SketchframeStyle] {
+        let order = ["fill", "border", "effect", "corner", "layout", "text"]
+        return styles
+            .map { key, value in
+                let category = key.split(separator: "_").first.map(String.init)
+                return SketchframeStyle(
+                    id: "style:\(key)",
+                    name: key,
+                    kind: .reused,
+                    category: category,
+                    details: prettyJSON(value),
+                    nodeIDs: nodes.filter { $0.styleKeys.contains(key) }.map(\.id)
+                )
+            }
+            .sorted {
+                let lhs = order.firstIndex(of: $0.category ?? "") ?? order.count
+                let rhs = order.firstIndex(of: $1.category ?? "") ?? order.count
+                return lhs == rhs ? $0.name < $1.name : lhs < rhs
+            }
     }
 
     /// Uses `preview.origin` when the exporter recorded it. Older exports

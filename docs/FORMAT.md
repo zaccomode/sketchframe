@@ -9,6 +9,7 @@ Checkout.sketchframe/
 ├── README.md          how to read the package (for agents that land here)
 ├── design.json        the design tree (this document)
 ├── preview@2x.png     the frame rendered at 2x
+├── annotations.json   notes left on layers in the Sketchframe app (optional)
 └── assets/
     ├── img_<hash>.png|jpg|…   original image bytes (image layers, image fills)
     └── vec_<hash>.svg         vectors and shape-only groups, rendered by Sketch
@@ -49,7 +50,8 @@ Fields are omitted when they hold the default value.
 
 | Field | Notes |
 |---|---|
-| `id` | `n1`, `n2`, … unique within the file, in depth-first order. |
+| `id` | `n1`, `n2`, … unique within the file, in depth-first order. Renumbered on every export. |
+| `sketchId` | 8-character hash of the Sketch layer ID. Stable across re-exports, so annotations can find their layer again. |
 | `name` | Sketch layer name. |
 | `type` | `frame` · `graphic` · `group` · `instance` · `text` · `image` · `rectangle` · `oval` · `vector` |
 | `x`, `y` | Points, relative to the parent node. The root has none. |
@@ -111,3 +113,32 @@ Borders are a Paint plus `{ position: inside|center|outside, thickness, sides? }
 
 Glass blurs add `brightness`, `distortion`, `depth`, `chromaticAberration`,
 `saturation` and `specularHighlights`.
+
+## `annotations.json`
+
+Written by the Sketchframe app when someone annotates a layer. The Sketch plugin
+keeps it when re-exporting over an existing package. Agents should treat these
+notes as instructions about the layers they're attached to.
+
+```jsonc
+{
+  "version": 1,
+  "annotations": [
+    {
+      "id": "6F1C…",                       // UUID
+      "category": "development",           // development · interaction · accessibility · content
+      "text": "This cube should only have the black fill, the white one is a mistake",
+      "nodeId": "n3",                      // design.json node id when written (renumbered on re-export)
+      "sketchId": "1a2b3c4d",              // matches the node's sketchId
+      "layerPath": ["Cubes", "Frame"],     // layer names from the root's children down
+      "layerName": "Frame",
+      "createdAt": "2026-11-03T11:20:00Z",
+      "updatedAt": "2026-11-03T11:25:00Z"  // optional
+    }
+  ]
+}
+```
+
+To find an annotation's layer, match `sketchId` first, then `layerPath`, then
+`nodeId` (only if that node's name still equals `layerName`). If none match, the
+layer was removed and the annotation is shown as detached.

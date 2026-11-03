@@ -20,7 +20,7 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     func preparePreviewOfFile(at url: URL) async throws {
         let package = try SketchframePackage(contentsOf: url)
 
-        let hostingView = NSHostingView(rootView: SketchframeView(package: package))
+        let hostingView = NSHostingView(rootView: SketchframeView(package: package, presentation: .quickLook))
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(hostingView)
         NSLayoutConstraint.activate([
