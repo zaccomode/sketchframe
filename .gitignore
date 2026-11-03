@@ -1,0 +1,19 @@
+# plugin build artifacts
+plugin/sketchframe.sketchplugin
+
+# npm
+node_modules
+.npm
+npm-debug.log
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+
+# mac
+.DS_Store
+
+# editors
+.idea
+.vscode/settings.json
