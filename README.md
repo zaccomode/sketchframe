@@ -18,6 +18,6 @@ To view a `.sketchframe` file, you'll need to install the Sketchframe macOS appl
 
 The Sketchframe application also contains a surface for you to annotate your designs, allowing you to provide explanations or additional details that are best kept alongside your design.
 
-# Working with AI
+## Working with AI
 
 Sketchframe files can be easily read by any AI agent. Every `.sketchframe` file comes bundled with instructions for how to read the file.
