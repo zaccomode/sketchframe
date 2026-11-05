@@ -33,7 +33,7 @@ jobs:
       - name: Build the app
         run: |
           xcodebuild build \
-            -project Sketchframe/Sketchframe.xcodeproj -scheme Sketchframe \
+            -project mac/Sketchframe.xcodeproj -scheme Sketchframe \
             -configuration Release -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO
 

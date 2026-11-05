@@ -15,7 +15,7 @@ fi
 root="$(cd "$(dirname "$0")/.." && pwd)"
 
 sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $version;/" \
-  "$root/Sketchframe/Sketchframe.xcodeproj/project.pbxproj"
+  "$root/mac/Sketchframe.xcodeproj/project.pbxproj"
 
 # --allow-same-version so a re-run, or a package already at the version, isn't an error.
 for package in plugin vscode; do

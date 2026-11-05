@@ -48,7 +48,7 @@ jobs:
           # Every target and configuration carries its own MARKETING_VERSION,
           # and Xcode's target settings make it easy to bump one and not the
           # others, so all of them have to agree.
-          versions="$(grep -ho 'MARKETING_VERSION = [^;]*' Sketchframe/Sketchframe.xcodeproj/project.pbxproj | sort -u)"
+          versions="$(grep -ho 'MARKETING_VERSION = [^;]*' mac/Sketchframe.xcodeproj/project.pbxproj | sort -u)"
           if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
             echo "::error::The Xcode targets disagree on MARKETING_VERSION:" $versions
             exit 1
@@ -156,7 +156,7 @@ jobs:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild archive \
-            -project Sketchframe/Sketchframe.xcodeproj -scheme Sketchframe \
+            -project mac/Sketchframe.xcodeproj -scheme Sketchframe \
             -configuration Release -destination 'generic/platform=macOS' \
             -archivePath "$RUNNER_TEMP/Sketchframe.xcarchive" \
             CODE_SIGN_STYLE=Manual \
