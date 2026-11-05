@@ -1,0 +1,264 @@
+name: Release
+
+# A v* tag is the trigger, and the tag has to agree with both the app's
+# MARKETING_VERSION and the plugin's package.json, so the app and the plugin
+# always ship together under one version.
+#
+# Ordinarily nobody pushes that tag by hand: tag-release.yml creates it when a
+# version bump lands on main, then dispatches this workflow on it. A tag pushed
+# by hand still starts a release through `push` below.
+on:
+  push:
+    tags: ['v*']
+  # How tag-release.yml starts this, because a tag created with GITHUB_TOKEN
+  # does not fire `push`. Also available by hand to re-run a release on its
+  # tag. Either way the run is on the tag ref: the signing environment's tag
+  # policy is matched against the run's own ref, so a run dispatched from a
+  # branch cannot reach the certificate. `verify` says so outright rather than
+  # leaving that to surface as an environment error later.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.ref_type }}" != "tag" ]; then
+            echo "::error::This workflow builds a tag, but it was run against" \
+                 "${{ github.ref_type }} ${{ github.ref_name }}. Re-run it from" \
+                 "Actions and choose the release tag in the ref picker."
+            exit 1
+          fi
+          tag="${{ github.ref_name }}"
+
+          # Every target and configuration carries its own MARKETING_VERSION,
+          # and Xcode's target settings make it easy to bump one and not the
+          # others, so all of them have to agree.
+          versions="$(grep -ho 'MARKETING_VERSION = [^;]*' Sketchframe/Sketchframe.xcodeproj/project.pbxproj | sort -u)"
+          if [ "$(printf '%s\n' "$versions" | wc -l)" -ne 1 ]; then
+            echo "::error::The Xcode targets disagree on MARKETING_VERSION:" $versions
+            exit 1
+          fi
+          app="v${versions#MARKETING_VERSION = }"
+          plugin="v$(node -p "require('./plugin/package.json').version")"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ]; then
+            echo "::error::Tag $tag, app $app and plugin $plugin must all match." \
+                 "Bump MARKETING_VERSION and plugin/package.json together, then re-tag."
+            exit 1
+          fi
+
+          # A re-run on a tag whose release already exists would otherwise
+          # build, sign and notarise for twenty minutes, then fail at the end.
+          if gh release view "$tag" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+            echo "::error::A release for $tag already exists. Delete it in the" \
+                 "Releases UI first if you mean to rebuild it."
+            exit 1
+          fi
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    needs: verify
+    # The signing credentials live on this environment rather than on the
+    # repository, so they are reachable only from a job that asks for them by
+    # name and only from a ref the environment's tag policy allows. See
+    # docs/release.md for the environment's settings.
+    environment: release
+    # The project is in Xcode 27's format (objectVersion 90).
+    runs-on: macos-27
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode 27
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # The certificate goes into a keychain this job builds and deletes, so
+      # it never touches the runner's login keychain.
+      - name: Import the signing certificate into a keychain of our own
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MAC_CSC_LINK }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          keychain="$RUNNER_TEMP/sketchframe-signing.keychain-db"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          # Protects a keychain that only lives for this job, so it is
+          # generated rather than stored.
+          password="$(openssl rand -base64 24)"
+
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate"
+
+          security create-keychain -p "$password" "$keychain"
+          # macOS appends `-db` to a keychain name that does not already end in
+          # it, so take whichever path actually appeared.
+          if [ ! -f "$keychain" ] && [ -f "$keychain-db" ]; then
+            keychain="$keychain-db"
+          fi
+          if [ ! -f "$keychain" ]; then
+            echo "::error::security create-keychain produced no file at $keychain."
+            exit 1
+          fi
+          # No timeout and no lock on sleep, so it cannot lock mid-signing.
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$certificate"
+
+          # Without this, codesign asks for permission to use the key and waits
+          # for a click nobody is there to give.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$password" "$keychain" > /dev/null
+
+          # codesign only finds identities in keychains on the search list.
+          # `list-keychains` has no add, only a wholesale set, so the existing
+          # entries are passed through and saved for the cleanup step.
+          security list-keychains -d user | tr -d '"' | xargs > "$RUNNER_TEMP/keychains-before"
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(cat "$RUNNER_TEMP/keychains-before")
+
+          echo "KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      # Manual signing with Developer ID overrides the project's Automatic
+      # style, which would otherwise want an Apple account signed into Xcode.
+      # The run number becomes the build number, so every release build is
+      # distinguishable even when the marketing version is not.
+      - name: Archive
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive \
+            -project Sketchframe/Sketchframe.xcodeproj -scheme Sketchframe \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -archivePath "$RUNNER_TEMP/Sketchframe.xcarchive" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" \
+            OTHER_CODE_SIGN_FLAGS="--timestamp --keychain $KEYCHAIN"
+
+      - name: Export for Developer ID
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>developer-id</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Developer ID Application</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Sketchframe.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export"
+          echo "APP=$RUNNER_TEMP/export/Sketchframe.app" >> "$GITHUB_ENV"
+
+      - name: Notarise and staple
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          auth=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
+
+          # notarytool takes a zip; the ticket is then stapled to the app
+          # itself, and the app re-zipped for release below.
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarize.zip"
+          result="$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" --wait --output-format json "${auth[@]}")"
+          echo "$result"
+
+          # --wait exits 0 when Apple rejects the build too, so the status is
+          # what decides. The log says which binary failed and why.
+          if [ "$(jq -r .status <<<"$result")" != "Accepted" ]; then
+            echo "::error::Notarisation was not accepted. Apple's log follows."
+            xcrun notarytool log "$(jq -r .id <<<"$result")" "${auth[@]}"
+            exit 1
+          fi
+          xcrun stapler staple "$APP"
+
+      # A green build says nothing on its own about how the app was signed, so
+      # check exactly what users' Gatekeeper will check.
+      - name: Assert the app is signed and notarised
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          if ! codesign -dvv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+            echo "::error::$APP carries no Developer ID Application authority." \
+                 "Check MAC_CSC_LINK holds a Developer ID Application certificate" \
+                 "and that the secrets are on the 'release' environment."
+            exit 1
+          fi
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+
+      - name: Package the app
+        run: |
+          mkdir -p dist
+          ditto -c -k --keepParent "$APP" "dist/Sketchframe-$VERSION.zip"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+
+      # --ignore-scripts: postinstall runs skpm-link, which tries to install
+      # the plugin into Sketch on the runner.
+      - name: Build and package the Sketch plugin
+        working-directory: plugin
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts
+          npm run build
+          ditto -c -k --keepParent sketchframe.sketchplugin "../dist/sketchframe-$VERSION.sketchplugin.zip"
+
+      # The runner is destroyed after this, so this is hygiene rather than a
+      # control, but it matters the day this runs somewhere self-hosted.
+      # `always()` so a failed build still cleans up after itself.
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          if [ -n "${KEYCHAIN:-}" ]; then
+            security delete-keychain "$KEYCHAIN" || true
+          fi
+          if [ -f "$RUNNER_TEMP/keychains-before" ]; then
+            # shellcheck disable=SC2046
+            security list-keychains -d user -s $(cat "$RUNNER_TEMP/keychains-before") || true
+          fi
+          rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/keychains-before"
+
+      # A draft, so a person opens the build before anyone can download it.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --draft --title "Sketchframe $GITHUB_REF_NAME" --generate-notes \
+            --verify-tag

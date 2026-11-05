@@ -1,0 +1,50 @@
+name: CI
+
+# tag-release.yml listens for this workflow by name, so renaming it means
+# updating that file too.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # The project is in Xcode 27's format (objectVersion 90), which older
+    # Xcodes cannot open.
+    runs-on: macos-27
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select the newest Xcode 27
+        run: |
+          set -euo pipefail
+          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # Unsigned: this only proves the app compiles. Signing is release.yml's
+      # job, and only that job can reach the certificate.
+      - name: Build the app
+        run: |
+          xcodebuild build \
+            -project Sketchframe/Sketchframe.xcodeproj -scheme Sketchframe \
+            -configuration Release -destination 'generic/platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: plugin/package-lock.json
+
+      # --ignore-scripts: postinstall runs skpm-link, which tries to install
+      # the plugin into Sketch on the runner.
+      - name: Build the Sketch plugin
+        working-directory: plugin
+        run: |
+          npm ci --ignore-scripts
+          npm run build
