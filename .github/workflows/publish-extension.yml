@@ -11,7 +11,13 @@ name: Publish VS Code extension
 # means updating that policy.
 on:
   release:
-    types: [published]
+    # `released`, not `published`: it fires when a full release is published
+    # and when a pre-release is turned into one, and never for pre-releases.
+    # So pre-releases stay on GitHub, and unticking "Set as a pre-release"
+    # ships one. (`published` fires once, when the draft is first published,
+    # so a release that started as a pre-release would never reach the
+    # Marketplace.)
+    types: [released]
   # To retry a failed publish. Run it on the release's tag: the `release`
   # environment only admits v* tags.
   workflow_dispatch:
@@ -21,8 +27,6 @@ permissions:
 
 jobs:
   publish:
-    # Pre-releases stay on GitHub only.
-    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
     runs-on: ubuntu-latest
     environment: release
     permissions:

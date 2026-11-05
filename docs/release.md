@@ -33,8 +33,9 @@ under one version:
      open a Sketchframe with it.
 5. Publish the release in the GitHub UI. That starts
    `.github/workflows/publish-extension.yml`, which publishes the release's own
-   `.vsix` to the VS Code Marketplace. Releases marked as pre-releases are
-   skipped and stay on GitHub only.
+   `.vsix` to the VS Code Marketplace. A release published with **Set as a
+   pre-release** ticked stays on GitHub only; unticking it later publishes it
+   to the Marketplace then.
 
 Pushing a tag by hand still works, and is the fallback if `tag-release.yml`
 fails:
