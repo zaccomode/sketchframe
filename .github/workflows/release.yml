@@ -27,7 +27,7 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: check
         shell: bash
@@ -75,18 +75,19 @@ jobs:
     # name and only from a ref the environment's tag policy allows. See
     # docs/release.md for the environment's settings.
     environment: release
-    # The project is in Xcode 27's format (objectVersion 90).
-    runs-on: macos-27
+    # The project is in Xcode 27's format (objectVersion 90). See ci.yml for
+    # why the label is xcode-27.
+    runs-on: xcode-27
     env:
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Select the newest Xcode 27
+      # Pinned rather than the newest Xcode_27*: the image also carries
+      # release candidates, which should never build a release.
+      - name: Select Xcode 27.1
         run: |
-          set -euo pipefail
-          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
-          sudo xcode-select -s "$xcode"
+          sudo xcode-select -s /Applications/Xcode_27.1.app
           xcodebuild -version
 
       # The certificate goes into a keychain this job builds and deletes, so
@@ -223,7 +224,7 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent "$APP" "dist/Sketchframe-$VERSION.zip"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

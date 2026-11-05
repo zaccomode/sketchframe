@@ -67,7 +67,14 @@ These are the same values Arborist 2 uses, so they can be copied across.
 
 ### Runner
 
-Both workflows run on `macos-27`, because the project is in Xcode 27's format
-and older Xcodes cannot open it. They select the newest `Xcode_27*` on the
-image rather than a fixed path, so a point release on the image does not break
-the build.
+Both macOS jobs run on `xcode-27`, GitHub's preview image for Xcode 27,
+because the project is in Xcode 27's format and older Xcodes cannot open it.
+There is no `macos-27` label: a job that asks for one queues until it times out
+instead of failing. Being a preview, the image can queue for longer than the
+GA ones while GitHub balances capacity.
+
+They select `/Applications/Xcode_27.1.app` by its exact path, matching the
+Xcode used locally. The image also carries release candidates, so picking the
+newest `Xcode_27*` would build releases with a pre-release Xcode. When moving
+to a newer Xcode, change the path in both `ci.yml` and `release.yml`, and when
+the image goes GA (or a `macos-27` label appears), update `runs-on` in both.

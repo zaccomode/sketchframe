@@ -14,16 +14,18 @@ concurrency:
 jobs:
   check:
     # The project is in Xcode 27's format (objectVersion 90), which older
-    # Xcodes cannot open.
-    runs-on: macos-27
+    # Xcodes cannot open. Xcode 27 is only on GitHub's preview image so far,
+    # whose label is xcode-27; there is no macos-27, and a job asking for one
+    # queues until it times out rather than failing.
+    runs-on: xcode-27
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Select the newest Xcode 27
+      # Pinned rather than the newest Xcode_27*: the image also carries
+      # release candidates, which should never build a release.
+      - name: Select Xcode 27.1
         run: |
-          set -euo pipefail
-          xcode="$(ls -d /Applications/Xcode_27*.app | sort -V | tail -1)"
-          sudo xcode-select -s "$xcode"
+          sudo xcode-select -s /Applications/Xcode_27.1.app
           xcodebuild -version
 
       # Unsigned: this only proves the app compiles. Signing is release.yml's
@@ -35,7 +37,7 @@ jobs:
             -configuration Release -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
