@@ -4,6 +4,10 @@
 
 import { apply, concat, identity, invert, rotate, scale, translate } from './geometry.ts';
 import type { Point, Size, Transform } from './geometry.ts';
+import { outlineSegments, outlineShape, transformSegments } from './outline.ts';
+import type { OutlineShape, Segment } from './outline.ts';
+import { nodeSections, styleSections } from './properties.ts';
+import type { PropertySection } from './properties.ts';
 
 type JSONObject = Record<string, unknown>;
 
@@ -30,11 +34,17 @@ export type SketchframeNode = {
    * space, including its own and its ancestors' position, rotation and flips.
    */
   transform: Transform;
+  /** The shape the canvas outlines: the node's corners, or an ellipse for ovals. */
+  shape: OutlineShape;
   children: SketchframeNode[];
+  /** The node's properties, grouped for the inspector's GUI view. */
+  sections: PropertySection[];
   /** The node's own JSON (without children), with shared style keys resolved. */
   details: string;
   /** Just the node's style fields as JSON, for describing its shared style. */
   styleDetails: string;
+  /** Just the node's style fields, grouped for the inspector's GUI view. */
+  styleSections: PropertySection[];
 };
 
 export type SketchframeComponent = {
@@ -56,6 +66,8 @@ export type SketchframeStyle = {
   /** For reused values: `fill`, `border`, `effect`, `corner`, `layout` or `text`. */
   category?: string;
   details: string;
+  /** The style's values, grouped for the inspector's GUI view. */
+  sections: PropertySection[];
   nodeIds: string[];
 };
 
@@ -189,6 +201,11 @@ export function corners(node: SketchframeNode): Point[] {
     { x: width, y: height },
     { x: 0, y: height },
   ].map((point) => apply(node.transform, point));
+}
+
+/** The node's outline (following its corners) in root coordinates. */
+export function outline(node: SketchframeNode): Segment[] {
+  return transformSegments(outlineSegments(node.shape, node.size), node.transform);
 }
 
 export function contains(node: SketchframeNode, point: Point): boolean {
@@ -388,9 +405,12 @@ function parseNode(
     tokens: tokenNames(details),
     size,
     transform,
+    shape: outlineShape(string(object.type) ?? 'group', details.corners),
     children,
+    sections: nodeSections(details),
     details: prettyJSON(details),
     styleDetails: prettyJSON(appearance),
+    styleSections: nodeSections(appearance),
   };
 }
 
@@ -425,6 +445,7 @@ function sharedStyles(nodes: SketchframeNode[]): SketchframeStyle[] {
       kind: 'shared',
       category: nodes[0]?.type === 'text' ? 'text' : undefined,
       details: nodes[0]?.styleDetails ?? '',
+      sections: nodes[0]?.styleSections ?? [],
       nodeIds: nodes.map((node) => node.id),
     };
   });
@@ -444,6 +465,7 @@ function reusedStyles(styles: JSONObject, nodes: SketchframeNode[]): Sketchframe
       kind: 'reused',
       category: key.split('_')[0],
       details: prettyJSON(value),
+      sections: styleSections(key.split('_')[0], value),
       nodeIds: nodes.filter((node) => node.styleKeys.includes(key)).map((node) => node.id),
     }))
     .sort((a, b) => rank(a) - rank(b) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
