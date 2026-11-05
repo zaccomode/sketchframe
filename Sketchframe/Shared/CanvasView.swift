@@ -72,18 +72,22 @@ struct CanvasView: View {
                     .overlay { Text("No preview").foregroundStyle(.secondary) }
             }
 
-            ForEach(highlightedNodes) { node in
-                // Traced through the node's transformed corners so the
-                // outline follows rotated and flipped layers.
-                let outline = Path { path in
-                    path.addLines(node.corners.map(point))
-                    path.closeSubpath()
-                }
+            // The selection keeps a solid outline; whatever is hovered gets a
+            // dashed one on top, so both are visible at once.
+            let selected = nodes(for: state.selection)
+            let selectedIDs = Set(selected.map(\.id))
+            ForEach(selected) { node in
+                let outline = outline(of: node, point: point)
                 ZStack {
                     outline.fill(Color.accentColor.opacity(0.12))
                     outline.stroke(Color.accentColor, lineWidth: 1.5)
                 }
                 .allowsHitTesting(false)
+            }
+            ForEach(nodes(for: state.hovered).filter { !selectedIDs.contains($0.id) }) { node in
+                outline(of: node, point: point)
+                    .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+                    .allowsHitTesting(false)
             }
 
             if showsAnnotationBadges {
@@ -111,13 +115,18 @@ struct CanvasView: View {
             state.selectLayer(layer(at: location, scale: scale)?.id)
         }
         .onContinuousHover(coordinateSpace: .local) { phase in
-            // Kept when the pointer leaves: opening the menu ends the hover.
-            if case .active(let location) = phase {
+            switch phase {
+            case .active(let location):
+                // Kept when the pointer leaves: opening the menu ends the hover.
                 let id = layer(at: location, scale: scale)?.id
                 if id != pointerNodeID { pointerNodeID = id }
-                // Sidebar rows set these; with the pointer on the canvas any
-                // left over is stale. (Badges set `.annotation`, so keep that.)
-                if let hovered = state.hovered, !hovered.isAnnotation { state.hovered = nil }
+                // The layer under the pointer gets the dashed outline. This
+                // also replaces anything a sidebar row left behind, but not a
+                // badge's `.annotation`, which is hovered on top of the canvas.
+                let target = id.map(HighlightTarget.node)
+                if state.hovered?.isAnnotation != true, state.hovered != target { state.hovered = target }
+            case .ended:
+                if case .node = state.hovered { state.hovered = nil }
             }
         }
         .contextMenu {
@@ -140,10 +149,19 @@ struct CanvasView: View {
         return package.hitTest(CGPoint(x: location.x / scale - offset.x, y: location.y / scale - offset.y))
     }
 
-    /// The frame layers to outline for the current highlight. Anything inside
-    /// a component definition outlines that component's instances instead.
-    private var highlightedNodes: [SketchframeNode] {
-        switch state.highlight {
+    /// Traced through the node's transformed corners so the outline follows
+    /// rotated and flipped layers.
+    private func outline(of node: SketchframeNode, point: (CGPoint) -> CGPoint) -> Path {
+        Path { path in
+            path.addLines(node.corners.map(point))
+            path.closeSubpath()
+        }
+    }
+
+    /// The frame layers to outline for a highlight. Anything inside a
+    /// component definition outlines that component's instances instead.
+    private func nodes(for target: HighlightTarget?) -> [SketchframeNode] {
+        switch target {
         case .node(let id), .component(let id):
             if let component = package.component(containing: id) { return component.instances }
             return package.node(withID: id).map { [$0] } ?? []

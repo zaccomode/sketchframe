@@ -18,6 +18,10 @@ To view a `.sketchframe` file, you'll need to install the Sketchframe macOS appl
 
 The Sketchframe application also contains a surface for you to annotate your designs, allowing you to provide explanations or additional details that are best kept alongside your design.
 
+## The VS Code Extension
+
+You can also view and annotate Sketchframes inside VS Code, with the same layout as the app. Install _Sketchframe_ from the VS Code Marketplace, or download the `.vsix` from a [release](https://github.com/zaccomode/sketchframe/releases). See [vscode/README.md](vscode/README.md) for how to open one.
+
 ## Working with AI
 
 Sketchframe files can be easily read by any AI agent. Every `.sketchframe` file comes bundled with instructions for how to read the file.

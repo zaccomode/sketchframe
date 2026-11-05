@@ -1,0 +1,614 @@
+/* Colours and fonts come from VS Code's theme variables, so the viewer
+   follows light, dark and high-contrast themes without its own palette.
+
+   Every grid track below is minmax(0, …). A track otherwise grows to fit its
+   content: a long details pane made the whole viewer taller than the window,
+   which shifted the canvas on every selection and left nothing to scroll. */
+
+:root {
+  --outline: var(--vscode-focusBorder);
+  /* Overridden with the active theme's JSON colours when it defines them. */
+  --json-key: var(--vscode-debugTokenExpression-name, var(--vscode-foreground));
+  --json-string: var(--vscode-debugTokenExpression-string, var(--vscode-foreground));
+  --json-number: var(--vscode-debugTokenExpression-number, var(--vscode-foreground));
+  --json-constant: var(--vscode-debugTokenExpression-boolean, var(--vscode-foreground));
+  --category-development: var(--vscode-charts-blue, #3794ff);
+  --category-interaction: var(--vscode-charts-purple, #b180d7);
+  --category-accessibility: var(--vscode-charts-green, #89d185);
+  --category-content: var(--vscode-charts-orange, #d18616);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.viewer {
+  --sidebar-width: 300px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--sidebar-width);
+  grid-template-rows: minmax(0, 1fr);
+  height: 100vh;
+}
+
+.viewer.sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr) 0;
+}
+
+.viewer.sidebar-hidden .sidebar {
+  display: none;
+}
+
+/* Canvas */
+
+.canvas-area {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  overflow: auto;
+  padding: 24px;
+  outline: none;
+}
+
+.stage {
+  position: relative;
+  margin: auto;
+}
+
+.preview,
+.outlines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.preview {
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.outlines {
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* The selection keeps a solid outline; whatever is hovered gets a dashed one
+   on top, so both are visible at once. */
+.outlines polygon {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.outlines polygon.hover {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
+.message {
+  margin: auto;
+  color: var(--vscode-descriptionForeground);
+}
+
+.zoom-controls {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-widget-border, transparent));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+}
+
+.zoom-controls button {
+  min-width: 24px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.zoom-controls button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.zoom-level {
+  min-width: 44px !important;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Annotation pins */
+
+.pins {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pin,
+.badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--badge-color);
+}
+
+.pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.pin.selected {
+  outline: 2px solid var(--vscode-editor-background);
+  box-shadow: 0 0 0 4px var(--badge-color);
+}
+
+.category-development {
+  --badge-color: var(--category-development);
+}
+.category-interaction {
+  --badge-color: var(--category-interaction);
+}
+.category-accessibility {
+  --badge-color: var(--category-accessibility);
+}
+.category-content {
+  --badge-color: var(--category-content);
+}
+
+/* Sidebar */
+
+.sidebar {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  background: var(--vscode-sideBar-background);
+  border-left: 1px solid var(--vscode-sideBar-border, var(--vscode-panel-border, transparent));
+}
+
+/* Like VS Code's own sashes: a wide invisible grab area, and a thin line
+   that lights up only after the pointer rests on it. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  width: 8px;
+  z-index: 1;
+  cursor: col-resize;
+}
+
+.sidebar-resizer::after,
+.splitter::after {
+  content: '';
+  position: absolute;
+  background: transparent;
+  transition: background-color 0.1s ease-out;
+}
+
+.sidebar-resizer::after {
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+}
+
+.splitter::after {
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 2px;
+}
+
+.sidebar-resizer:hover::after,
+.splitter:hover::after {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+  transition-delay: 0.3s;
+}
+
+.sidebar-resizer.dragging::after,
+.splitter.dragging::after {
+  background: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder));
+  transition-delay: 0s;
+}
+
+.inspector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(100px, var(--list-size, 1fr)) 4px minmax(100px, 1fr);
+  min-height: 0;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 2px;
+  margin: 8px;
+  padding: 2px;
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+}
+
+.tabs button {
+  padding: 4px 2px;
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tabs button[aria-selected='true'] {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-list-activeSelectionForeground));
+}
+
+.list {
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 8px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 8px;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.row.flat {
+  padding-left: 12px;
+}
+
+.row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.row[aria-selected='true'] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.twisty {
+  flex: 0 0 16px;
+  color: var(--vscode-icon-foreground);
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.type {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.row[aria-selected='true'] .type {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.swatch {
+  flex: 0 0 12px;
+  height: 12px;
+  border-radius: 3px;
+  box-shadow: inset 0 0 0 1px var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+}
+
+.empty {
+  margin: 12px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.splitter {
+  position: relative;
+  cursor: row-resize;
+  border-top: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+}
+
+.details {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.details header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  font-weight: 600;
+}
+
+.details-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.copy:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.json {
+  margin: 0;
+  min-height: 0;
+  padding: 4px 8px 12px;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.45;
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* Follows editor.wordWrap for JSON. */
+.json.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.json.placeholder {
+  font-family: inherit;
+  color: var(--vscode-descriptionForeground);
+  white-space: normal;
+}
+
+.json-key {
+  color: var(--json-key);
+}
+.json-string {
+  color: var(--json-string);
+}
+.json-number {
+  color: var(--json-number);
+}
+.json-constant {
+  color: var(--json-constant);
+}
+
+/* Annotations */
+
+.annotations {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.annotations-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 6px 12px;
+  font-weight: 600;
+}
+
+.annotations-title {
+  flex: 1;
+}
+
+.add-annotation {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+}
+
+.add-annotation:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.annotation-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 12px;
+}
+
+.card {
+  display: block;
+  margin: 0 0 8px;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.25));
+  cursor: default;
+}
+
+.card.selected {
+  border-color: var(--vscode-focusBorder);
+}
+
+.card.detached {
+  opacity: 0.7;
+}
+
+.card header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card .layer {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.card .category {
+  flex: none;
+  font-size: 11px;
+  color: var(--badge-color);
+  text-transform: capitalize;
+}
+
+.card .actions {
+  display: none;
+  flex: none;
+  gap: 2px;
+}
+
+.card:hover .actions,
+.card.selected .actions {
+  display: flex;
+}
+
+.card:hover .category,
+.card.selected .category {
+  display: none;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.icon:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.card .text {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+.editor select {
+  flex: none;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, transparent);
+  border-radius: 3px;
+}
+
+.editor textarea {
+  display: block;
+  width: 100%;
+  margin: 8px 0;
+  padding: 6px;
+  resize: vertical;
+  font: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 3px;
+}
+
+.editor textarea::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.editor footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.editor footer button {
+  padding: 3px 12px;
+  border-radius: 3px;
+}
+
+.editor .primary {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+}
+
+.editor .primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+.editor .secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+.editor .secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}

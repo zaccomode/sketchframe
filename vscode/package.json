@@ -1,0 +1,217 @@
+{
+  "name": "sketchframe",
+  "displayName": "Sketchframe",
+  "description": "View .sketchframe design exports: the frame preview, its layer tree and design details",
+  "preview": true,
+  "version": "0.2.0",
+  "publisher": "zaccomode",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zaccomode/sketchframe"
+  },
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "sketchframe.viewer",
+        "displayName": "Sketchframe",
+        "selector": [
+          {
+            "filenamePattern": "**/*.sketchframe/design.json"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "sketchframe.open",
+        "title": "Open Sketchframe",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.zoomIn",
+        "title": "Zoom In",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.zoomOut",
+        "title": "Zoom Out",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.zoomToFit",
+        "title": "Zoom to Fit",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.actualSize",
+        "title": "Actual Size",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.toggleAnnotations",
+        "title": "Show/Hide Annotations",
+        "category": "Sketchframe",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "sketchframe.toggleInspector",
+        "title": "Show/Hide Inspector",
+        "category": "Sketchframe",
+        "icon": "$(info)"
+      },
+      {
+        "command": "sketchframe.addAnnotation",
+        "title": "Add Annotation",
+        "category": "Sketchframe"
+      },
+      {
+        "command": "sketchframe.selectLayer",
+        "title": "Select Layer",
+        "category": "Sketchframe"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "sketchframe.open",
+          "when": "explorerResourceIsFolder && resourceExtname == .sketchframe",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "sketchframe.toggleAnnotations",
+          "when": "sketchframe.viewerFocused",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sketchframe.toggleInspector",
+          "when": "sketchframe.viewerFocused",
+          "group": "navigation@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "sketchframe.open",
+          "when": "false"
+        },
+        {
+          "command": "sketchframe.selectLayer",
+          "when": "false"
+        },
+        {
+          "command": "sketchframe.zoomIn",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.zoomOut",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.zoomToFit",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.actualSize",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.toggleAnnotations",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.toggleInspector",
+          "when": "sketchframe.viewerFocused"
+        },
+        {
+          "command": "sketchframe.addAnnotation",
+          "when": "sketchframe.viewerFocused"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "sketchframe.addAnnotation",
+          "when": "webviewId == sketchframe.viewer && webviewSection == layer && sketchframeCanAnnotate",
+          "group": "navigation@1"
+        },
+        {
+          "command": "sketchframe.selectLayer",
+          "when": "webviewId == sketchframe.viewer && webviewSection == layer",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "sketchframe.zoomIn",
+        "key": "ctrl+=",
+        "mac": "cmd+=",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.zoomOut",
+        "key": "ctrl+-",
+        "mac": "cmd+-",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.actualSize",
+        "key": "ctrl+0",
+        "mac": "cmd+0",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.zoomToFit",
+        "key": "ctrl+9",
+        "mac": "cmd+9",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.toggleInspector",
+        "key": "ctrl+alt+i",
+        "mac": "cmd+alt+i",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.toggleAnnotations",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "sketchframe.viewerFocused"
+      },
+      {
+        "command": "sketchframe.addAnnotation",
+        "key": "ctrl+alt+n",
+        "mac": "cmd+alt+n",
+        "when": "sketchframe.viewerFocused"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "package": "npm run build -- --production && vsce package --no-dependencies",
+    "vscode:prepublish": "npm run build -- --production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/vscode": "~1.100.0",
+    "@vscode/codicons": "^0.0.46-24",
+    "@vscode/vsce": "^4.1.0",
+    "esbuild": "^0.28.2",
+    "jsonc-parser": "^3.3.1",
+    "typescript": "^7.0.2"
+  }
+}

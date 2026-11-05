@@ -1,8 +1,12 @@
 name: Release
 
-# A v* tag is the trigger, and the tag has to agree with both the app's
-# MARKETING_VERSION and the plugin's package.json, so the app and the plugin
-# always ship together under one version.
+# A v* tag is the trigger, and the tag has to agree with the app's
+# MARKETING_VERSION and the plugin's and the VS Code extension's package.json,
+# so all three always ship together under one version.
+# scripts/bump-version.sh sets all of them.
+#
+# Publishing the draft this leaves is what puts the extension on the VS Code
+# Marketplace; see publish-extension.yml.
 #
 # Ordinarily nobody pushes that tag by hand: tag-release.yml creates it when a
 # version bump lands on main, then dispatches this workflow on it. A tag pushed
@@ -51,9 +55,13 @@ jobs:
           fi
           app="v${versions#MARKETING_VERSION = }"
           plugin="v$(node -p "require('./plugin/package.json').version")"
-          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ]; then
-            echo "::error::Tag $tag, app $app and plugin $plugin must all match." \
-                 "Bump MARKETING_VERSION and plugin/package.json together, then re-tag."
+          # Sketch shows the manifest's version, which skpm doesn't take from package.json.
+          manifest="v$(node -p "require('./plugin/src/manifest.json').version")"
+          extension="v$(node -p "require('./vscode/package.json').version")"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$manifest" ] || [ "$tag" != "$extension" ]; then
+            echo "::error::Tag $tag, app $app, plugin $plugin (manifest $manifest) and" \
+                 "VS Code extension $extension must all match. Run scripts/bump-version.sh," \
+                 "then re-tag."
             exit 1
           fi
 
@@ -239,6 +247,26 @@ jobs:
           npm ci --ignore-scripts
           npm run build
           ditto -c -k --keepParent sketchframe.sketchplugin "../dist/sketchframe-$VERSION.sketchplugin.zip"
+
+      # Node 24 for the extension: its tests run the TypeScript sources
+      # directly, which needs Node's built-in type stripping.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      # The same checks CI runs, then the .vsix that goes on the release and,
+      # once the release is published, to the Marketplace unchanged.
+      - name: Build, test and package the VS Code extension
+        working-directory: vscode
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run typecheck
+          npm test
+          npm run package
+          mv "sketchframe-$VERSION.vsix" ../dist/
 
       # The runner is destroyed after this, so this is hygiene rather than a
       # control, but it matters the day this runs somewhere self-hosted.

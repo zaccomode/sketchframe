@@ -50,3 +50,42 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run build
+
+  extension:
+    # Nothing here needs macOS, and the xcode-27 preview image can queue.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 24: the tests run the TypeScript sources directly, which needs
+      # Node's built-in type stripping.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - name: Install
+        working-directory: vscode
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: vscode
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: vscode
+        run: npm test
+
+      # Packaging is where bundling problems show up: a dependency esbuild
+      # can't follow builds fine and only fails when VS Code loads it.
+      - name: Package
+        working-directory: vscode
+        run: npm run package
+
+      - name: Upload the .vsix, so a pull request's build can be installed and tried
+        uses: actions/upload-artifact@v7
+        with:
+          name: sketchframe-vscode
+          path: vscode/*.vsix
+          if-no-files-found: error

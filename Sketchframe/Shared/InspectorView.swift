@@ -183,7 +183,10 @@ struct InspectorView: View {
         case .tokens:
             if let token = state.selectedTokenName.flatMap(package.colorToken(named:)) {
                 let layers = token.nodeIDs.compactMap(package.node(withID:)).map(\.displayName)
-                DetailsPane(text: (["\(token.name)", token.value, ""] + layers.map { "• \($0)" }).joined(separator: "\n")) {
+                DetailsPane(
+                    text: (["\(token.name)", token.value, ""] + layers.map { "• \($0)" }).joined(separator: "\n"),
+                    isJSON: false
+                ) {
                     RelationBar {
                         ColorSwatch(css: token.value)
                         Text(token.value).foregroundStyle(.secondary)
@@ -269,6 +272,8 @@ struct InspectorView: View {
 /// copy button in the corner.
 private struct DetailsPane<Header: View>: View {
     let text: String
+    /// Plain text (like a color token's summary) isn't syntax-coloured.
+    var isJSON = true
     @ViewBuilder let header: Header
 
     @State private var didCopy = false
@@ -277,7 +282,7 @@ private struct DetailsPane<Header: View>: View {
         VStack(spacing: 0) {
             header
             ScrollView {
-                Text(text)
+                Text(isJSON ? JSONHighlighter.highlight(text) : AttributedString(text))
                     .font(.system(size: 11, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)

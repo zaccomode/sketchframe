@@ -5,9 +5,13 @@ import { round } from "./utils/math";
 import { createContext } from "./context";
 import { walk, walkComponents } from "./walker";
 import { extractSharedStyles, buildOutline } from "./postprocess";
+// The manifest rather than package.json, which would bundle all of
+// package.json's fields into the plugin along with the version.
+import { version } from "./manifest.json";
 
 export const FORMAT_VERSION = 1;
-export const PLUGIN_VERSION = "0.1.0";
+/** scripts/bump-version.sh keeps the manifest in step with the release. */
+export const PLUGIN_VERSION = version;
 export const PREVIEW_FILE = "preview@2x.png";
 const PREVIEW_SCALE = 2;
 
