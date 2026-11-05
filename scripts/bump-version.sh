@@ -22,4 +22,8 @@ for package in plugin vscode; do
   (cd "$root/$package" && npm version "$version" --no-git-tag-version --allow-same-version > /dev/null)
 done
 
+# Sketch shows the plugin's version from its manifest, which skpm copies as
+# it is rather than taking it from package.json.
+sed -i '' -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$root/plugin/src/manifest.json"
+
 echo "Set the app, plugin and VS Code extension to $version."

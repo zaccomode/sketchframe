@@ -55,10 +55,13 @@ jobs:
           fi
           app="v${versions#MARKETING_VERSION = }"
           plugin="v$(node -p "require('./plugin/package.json').version")"
+          # Sketch shows the manifest's version, which skpm doesn't take from package.json.
+          manifest="v$(node -p "require('./plugin/src/manifest.json').version")"
           extension="v$(node -p "require('./vscode/package.json').version")"
-          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$extension" ]; then
-            echo "::error::Tag $tag, app $app, plugin $plugin and VS Code extension" \
-                 "$extension must all match. Run scripts/bump-version.sh, then re-tag."
+          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$manifest" ] || [ "$tag" != "$extension" ]; then
+            echo "::error::Tag $tag, app $app, plugin $plugin (manifest $manifest) and" \
+                 "VS Code extension $extension must all match. Run scripts/bump-version.sh," \
+                 "then re-tag."
             exit 1
           fi
 

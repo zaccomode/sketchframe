@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/sketch-hq/SketchAPI/develop/docs/sketch-plugin-manifest-schema.json",
   "name": "Sketchframe",
   "description": "Export a frame as a .sketchframe package (PNG preview + JSON design tree) for AI agents",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.isaacshea.sketchframe",
   "commands": [
     {

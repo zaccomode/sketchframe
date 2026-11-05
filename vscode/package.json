@@ -3,7 +3,7 @@
   "displayName": "Sketchframe",
   "description": "View .sketchframe design exports: the frame preview, its layer tree and design details",
   "preview": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "zaccomode",
   "license": "MIT",
   "type": "module",
