@@ -1,0 +1,59 @@
+name: Publish VS Code extension
+
+# Publishing a GitHub release is the approval to release; this then puts that
+# release's .vsix on the VS Code Marketplace. It publishes the exact file
+# attached to the release rather than rebuilding it, so what people install
+# from the Marketplace is what was checked in the draft.
+#
+# There is no token: the Marketplace trusts this workflow file, in this
+# repository, in the `release` environment, through a Trusted Publishing
+# policy on the zaccomode publisher (see docs/release.md). Renaming this file
+# means updating that policy.
+on:
+  release:
+    types: [published]
+  # To retry a failed publish. Run it on the release's tag: the `release`
+  # environment only admits v* tags.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    # Pre-releases stay on GitHub only.
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      # Lets vsce request the GitHub identity token it exchanges with the
+      # Marketplace.
+      id-token: write
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      # Only for vsce, at the version pinned in the lockfile.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: vscode/package-lock.json
+
+      - name: Install vsce
+        working-directory: vscode
+        run: npm ci
+
+      - name: Download the release's .vsix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern '*.vsix' --dir "$RUNNER_TEMP/release"
+          ls "$RUNNER_TEMP/release"
+
+      - name: Publish to the VS Code Marketplace
+        working-directory: vscode
+        run: npx --no vsce publish --oidc --packagePath "$RUNNER_TEMP"/release/*.vsix
