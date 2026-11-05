@@ -117,14 +117,14 @@ textarea:focus-visible {
 
 /* The selection keeps a solid outline; whatever is hovered gets a dashed one
    on top, so both are visible at once. */
-.outlines polygon {
+.outlines path {
   fill: none;
   stroke: var(--outline);
   stroke-width: 2;
   vector-effect: non-scaling-stroke;
 }
 
-.outlines polygon.hover {
+.outlines path.hover {
   stroke-width: 1.5;
   stroke-dasharray: 5 3;
 }
@@ -396,6 +396,138 @@ textarea:focus-visible {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.details-mode {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  font-weight: normal;
+}
+
+.details-mode button {
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.details-mode button[aria-checked='true'] {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-list-activeSelectionForeground));
+}
+
+.properties {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 0 12px;
+}
+
+.property-section h3 {
+  margin: 0;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.property-section + .property-section {
+  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+}
+
+.property {
+  display: grid;
+  grid-template-columns: minmax(70px, 40%) minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  padding: 1px 8px;
+  cursor: pointer;
+}
+
+.property.block {
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: start;
+  padding-block: 3px;
+}
+
+.property.block .property-label {
+  grid-column: 1;
+}
+
+.property.block .property-value {
+  grid-column: 1;
+  grid-row: 2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.property.block .property-copy {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.property:hover,
+.property:focus-visible {
+  background: var(--vscode-list-hoverBackground);
+  outline: none;
+}
+
+.property-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+
+.property-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+}
+
+.property-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.property.block .property-text {
+  overflow: visible;
+}
+
+.property-token {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-family: var(--vscode-font-family);
+  font-size: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+}
+
+.property-copy {
+  visibility: hidden;
+  color: var(--vscode-icon-foreground);
+}
+
+.property:hover .property-copy,
+.property:focus-visible .property-copy,
+.property-copy.codicon-check {
+  visibility: visible;
 }
 
 .copy {

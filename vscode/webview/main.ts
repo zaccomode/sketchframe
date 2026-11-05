@@ -17,10 +17,14 @@ import {
   newAnnotation,
   nodeForAnnotation,
   nodeWithId,
+  outline,
   parsePackage,
   SketchframeError,
 } from './model.ts';
 import type { AnnotationCategory, SketchframeAnnotation, SketchframeNode, SketchframePackage } from './model.ts';
+import { svgPath } from './outline.ts';
+import { tokenSections } from './properties.ts';
+import type { PropertyRow, PropertySection } from './properties.ts';
 
 type VSCodeAPI = {
   postMessage(message: WebviewMessage): void;
@@ -39,6 +43,8 @@ const tabs = [
 ] as const;
 type Tab = (typeof tabs)[number]['id'];
 type SidebarMode = 'inspector' | 'annotations';
+/** How the details pane shows the selection: grouped properties, or the raw JSON. */
+type DetailsMode = 'gui' | 'json';
 
 /** What the canvas outlines: one layer, or every layer using something. */
 type Highlight = { nodes: SketchframeNode[] };
@@ -54,6 +60,7 @@ type SavedState = {
   sidebarMode: SidebarMode;
   sidebarWidth: number;
   listHeight: number | null;
+  detailsMode: DetailsMode;
 };
 
 const zoomRange = { min: 0.1, max: 8 };
@@ -75,6 +82,7 @@ const state = {
   sidebarMode: saved.sidebarMode ?? ('inspector' as SidebarMode),
   sidebarWidth: saved.sidebarWidth ?? 300,
   listHeight: saved.listHeight ?? null,
+  detailsMode: saved.detailsMode ?? ('gui' as DetailsMode),
   /** Selection per tab, like the Mac app keeps one per list. */
   selected: {} as Partial<Record<Tab, string>>,
   selectedAnnotationId: undefined as string | undefined,
@@ -116,8 +124,13 @@ document.body.innerHTML = `
         <section class="details">
           <header>
             <span class="details-title"></span>
+            <span class="details-mode" role="radiogroup" aria-label="Details view">
+              <button data-mode="gui" role="radio" title="Show properties">Properties</button>
+              <button data-mode="json" role="radio" title="Show JSON">JSON</button>
+            </span>
             <button class="copy codicon codicon-copy" title="Copy JSON"></button>
           </header>
+          <div class="properties"></div>
           <pre class="json"></pre>
         </section>
       </div>
@@ -147,6 +160,8 @@ const list = $<HTMLElement>('.list');
 const splitter = $<HTMLElement>('.splitter');
 const detailsTitle = $<HTMLElement>('.details-title');
 const json = $<HTMLElement>('.json');
+const properties = $<HTMLElement>('.properties');
+const detailsModeButtons = [...document.querySelectorAll<HTMLButtonElement>('.details-mode button')];
 const copyButton = $<HTMLButtonElement>('.copy');
 const annotationsTitle = $<HTMLElement>('.annotations-title');
 const addAnnotationButton = $<HTMLButtonElement>('.add-annotation');
@@ -172,6 +187,13 @@ $('.zoom-in').addEventListener('click', () => run('zoomIn'));
 $('.zoom-fit').addEventListener('click', () => run('zoomToFit'));
 zoomLevel.addEventListener('click', () => run('actualSize'));
 addAnnotationButton.addEventListener('click', () => beginAnnotation(state.selected.layers));
+for (const button of detailsModeButtons) {
+  button.addEventListener('click', () => {
+    state.detailsMode = button.dataset.mode === 'json' ? 'json' : 'gui';
+    save();
+    renderDetails();
+  });
+}
 
 // MARK: Messages
 
@@ -273,6 +295,7 @@ function save() {
     sidebarMode: state.sidebarMode,
     sidebarWidth: state.sidebarWidth,
     listHeight: state.listHeight,
+    detailsMode: state.detailsMode,
   };
   vscode.setState(saved);
 }
@@ -495,17 +518,20 @@ function renderCanvas() {
   renderPins();
 }
 
-/** Solid outlines for the selection, dashed ones for hovered layers that aren't selected. */
+/**
+ * Solid outlines for the selection, dashed ones for hovered layers that
+ * aren't selected. Each follows the layer's corners (or ellipse).
+ */
 function renderOutlines() {
   const selected = selection()?.nodes ?? [];
   const hovered = (state.hovered?.nodes ?? []).filter((node) => !selected.includes(node));
-  const polygon = (node: SketchframeNode, isHover: boolean) => {
-    const element = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    element.setAttribute('points', corners(node).map((p) => `${p.x},${p.y}`).join(' '));
+  const path = (node: SketchframeNode, isHover: boolean) => {
+    const element = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    element.setAttribute('d', svgPath(outline(node)));
     element.classList.toggle('hover', isHover);
     return element;
   };
-  outlines.replaceChildren(...selected.map((node) => polygon(node, false)), ...hovered.map((node) => polygon(node, true)));
+  outlines.replaceChildren(...selected.map((node) => path(node, false)), ...hovered.map((node) => path(node, true)));
 }
 
 /** A numbered badge at the top-left of each annotated layer. */
@@ -688,21 +714,35 @@ function renderDetails() {
   const id = state.selected[state.tab];
   let title = '';
   let text = '';
+  let sections: PropertySection[] = [];
   if (pkg && id !== undefined) {
     if (state.tab === 'layers' || state.tab === 'components') {
       const node = nodeWithId(pkg, id);
       title = node ? node.name || node.type : '';
       text = node?.details ?? '';
+      sections = node?.sections ?? [];
     } else if (state.tab === 'styles') {
       const style = pkg.styles.find((style) => style.id === id);
       title = style?.name ?? '';
       text = style?.details ?? '';
+      sections = style?.sections ?? [];
     } else {
       const token = pkg.colorTokens.find((token) => token.name === id);
       title = token?.name ?? '';
       text = token ? JSON.stringify({ name: token.name, value: token.value }, null, 2) : '';
+      if (token) {
+        const layers = nodesWithIds(token.nodeIds).map((node) => node.name || node.type);
+        sections = tokenSections(token.name, token.value, layers);
+      }
     }
   }
+  const showsJSON = state.detailsMode === 'json';
+  for (const button of detailsModeButtons) {
+    button.setAttribute('aria-checked', String(button.dataset.mode === state.detailsMode));
+  }
+  json.hidden = !showsJSON;
+  properties.hidden = showsJSON;
+  if (!showsJSON) renderProperties(text ? sections : undefined);
   if (pkg && !title) {
     const layers = `${pkg.nodeCount} ${pkg.nodeCount === 1 ? 'layer' : 'layers'}`;
     title = `${pkg.name} · ${layers}`;
@@ -714,11 +754,85 @@ function renderDetails() {
   copyButton.disabled = !text;
 }
 
-copyButton.addEventListener('click', async () => {
-  await navigator.clipboard.writeText(json.dataset.text ?? '');
-  copyButton.classList.replace('codicon-copy', 'codicon-check');
-  setTimeout(() => copyButton.classList.replace('codicon-check', 'codicon-copy'), 1200);
-});
+copyButton.addEventListener('click', () => copy(json.dataset.text ?? '', copyButton));
+
+/** Copies `text`, showing a tick on `button` for a moment. */
+async function copy(text: string, button: HTMLElement) {
+  await navigator.clipboard.writeText(text);
+  button.classList.remove('codicon-copy');
+  button.classList.add('codicon-check');
+  setTimeout(() => {
+    button.classList.remove('codicon-check');
+    button.classList.add('codicon-copy');
+  }, 1200);
+}
+
+/** The GUI view: titled groups of label/value rows, each copied by clicking it. */
+function renderProperties(sections: PropertySection[] | undefined) {
+  properties.replaceChildren();
+  if (sections === undefined) {
+    properties.append(empty('Select an item to see its details.'));
+    return;
+  }
+  if (sections.length === 0) {
+    properties.append(empty('No properties to show. Switch to JSON to see everything.'));
+    return;
+  }
+  for (const section of sections) {
+    const element = document.createElement('section');
+    element.className = 'property-section';
+    const heading = document.createElement('h3');
+    heading.textContent = section.title;
+    element.append(heading, ...section.rows.map(propertyRow));
+    properties.append(element);
+  }
+}
+
+function propertyRow(property: PropertyRow): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'property';
+  row.classList.toggle('block', property.block === true);
+  row.tabIndex = 0;
+  row.title = `Copy “${property.value}”`;
+
+  const label = document.createElement('span');
+  label.className = 'property-label';
+  label.textContent = property.label;
+
+  const value = document.createElement('span');
+  value.className = 'property-value';
+  if (property.swatch && property.swatch.length > 0) {
+    const swatch = document.createElement('span');
+    swatch.className = 'swatch';
+    swatch.style.background =
+      property.swatch.length === 1 ? property.swatch[0] : `linear-gradient(90deg, ${property.swatch.join(', ')})`;
+    value.append(swatch);
+  }
+  const text = document.createElement('span');
+  text.className = 'property-text';
+  text.textContent = property.value;
+  value.append(text);
+  if (property.token) {
+    const token = document.createElement('span');
+    token.className = 'property-token';
+    token.textContent = property.token;
+    token.title = `Color token “${property.token}”`;
+    value.append(token);
+  }
+
+  const icon = document.createElement('span');
+  icon.className = 'property-copy codicon codicon-copy';
+  row.append(label, value, icon);
+  const action = () => copy(property.value, icon);
+  row.addEventListener('click', action);
+  row.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      action();
+    }
+  });
+  return row;
+}
 
 // MARK: Annotations
 

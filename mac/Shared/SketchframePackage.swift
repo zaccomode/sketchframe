@@ -24,12 +24,18 @@ nonisolated struct SketchframeNode: Identifiable, Hashable, Sendable {
     /// frame's space, including its own and its ancestors' position, rotation
     /// and flips.
     let transform: CGAffineTransform
+    /// The shape the canvas outlines: the node's corners, or an ellipse for ovals.
+    let shape: OutlineShape
     /// `nil` for leaves, so `List(children:)` doesn't show disclosure arrows.
     let children: [SketchframeNode]?
     /// The node's own JSON (without children), with shared style keys resolved.
     let details: String
     /// Just the node's style fields as JSON, for describing its shared style.
     let styleDetails: String
+    /// The node's properties, grouped for the inspector's Properties view.
+    let sections: [PropertySection]
+    /// Just the node's style fields, grouped for the inspector's Properties view.
+    let styleSections: [PropertySection]
 
     /// Top-left, top-right, bottom-right, bottom-left in root coordinates.
     var corners: [CGPoint] {
@@ -114,6 +120,8 @@ nonisolated struct SketchframeStyle: Identifiable, Hashable, Sendable {
     /// For reused values: `fill`, `border`, `effect`, `corner`, `layout` or `text`.
     let category: String?
     let details: String
+    /// The style's values, grouped for the inspector's Properties view.
+    let sections: [PropertySection]
     let nodeIDs: [SketchframeNode.ID]
 
     var symbolName: String {
@@ -416,11 +424,12 @@ nonisolated struct SketchframePackage: Sendable {
             node(from: $0, parentTransform: transform, path: path, styles: styles, count: &count)
         }
 
+        let type = object["type"] as? String ?? "group"
         return SketchframeNode(
             id: object["id"] as? String ?? UUID().uuidString,
             sketchID: object["sketchId"] as? String,
             name: name,
-            type: object["type"] as? String ?? "group",
+            type: type,
             path: path,
             componentID: object["componentId"] as? String,
             sharedStyle: object["sharedStyle"] as? String,
@@ -428,9 +437,12 @@ nonisolated struct SketchframePackage: Sendable {
             tokens: tokenNames(in: details),
             size: size,
             transform: transform,
+            shape: OutlineShape(type: type, corners: details["corners"]),
             children: children?.isEmpty == false ? children : nil,
             details: prettyJSON(details),
-            styleDetails: prettyJSON(appearance)
+            styleDetails: prettyJSON(appearance),
+            sections: PropertySections.node(details),
+            styleSections: PropertySections.node(appearance)
         )
     }
 
@@ -473,6 +485,7 @@ nonisolated struct SketchframePackage: Sendable {
                     kind: .shared,
                     category: nodes.first?.type == "text" ? "text" : nil,
                     details: nodes.first?.styleDetails ?? "",
+                    sections: nodes.first?.styleSections ?? [],
                     nodeIDs: nodes.map(\.id)
                 )
             }
@@ -490,6 +503,7 @@ nonisolated struct SketchframePackage: Sendable {
                     kind: .reused,
                     category: category,
                     details: prettyJSON(value),
+                    sections: PropertySections.style(category: category, value: value),
                     nodeIDs: nodes.filter { $0.styleKeys.contains(key) }.map(\.id)
                 )
             }
