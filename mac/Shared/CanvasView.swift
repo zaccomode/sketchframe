@@ -77,7 +77,7 @@ struct CanvasView: View {
             let selected = nodes(for: state.selection)
             let selectedIDs = Set(selected.map(\.id))
             ForEach(selected) { node in
-                let outline = outline(of: node, point: point)
+                let outline = outline(of: node, scale: scale)
                 ZStack {
                     outline.fill(Color.accentColor.opacity(0.12))
                     outline.stroke(Color.accentColor, lineWidth: 1.5)
@@ -85,7 +85,7 @@ struct CanvasView: View {
                 .allowsHitTesting(false)
             }
             ForEach(nodes(for: state.hovered).filter { !selectedIDs.contains($0.id) }) { node in
-                outline(of: node, point: point)
+                outline(of: node, scale: scale)
                     .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                     .allowsHitTesting(false)
             }
@@ -149,13 +149,15 @@ struct CanvasView: View {
         return package.hitTest(CGPoint(x: location.x / scale - offset.x, y: location.y / scale - offset.y))
     }
 
-    /// Traced through the node's transformed corners so the outline follows
-    /// rotated and flipped layers.
-    private func outline(of node: SketchframeNode, point: (CGPoint) -> CGPoint) -> Path {
-        Path { path in
-            path.addLines(node.corners.map(point))
-            path.closeSubpath()
-        }
+    /// The node's shape (its corners, or an ellipse for ovals) in its own
+    /// space, carried through its transform so the outline follows rotated
+    /// and flipped layers, then into the artboard's scaled space.
+    private func outline(of node: SketchframeNode, scale: CGFloat) -> Path {
+        let offset = package.frameOrigin
+        let toArtboard = node.transform
+            .concatenating(CGAffineTransform(translationX: offset.x, y: offset.y))
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        return Path(node.shape.path(in: node.size)).applying(toArtboard)
     }
 
     /// The frame layers to outline for a highlight. Anything inside a

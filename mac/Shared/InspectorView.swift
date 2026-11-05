@@ -159,16 +159,16 @@ struct InspectorView: View {
         switch state.inspectorTab {
         case .layers:
             let node = state.selectedNodeID.flatMap(package.node(withID:)) ?? package.root
-            DetailsPane(text: node.details) { layerRelations(node) }
+            DetailsPane(text: node.details, sections: node.sections) { layerRelations(node) }
         case .components:
             if let node = state.selectedComponentNodeID.flatMap(package.node(withID:)) {
-                DetailsPane(text: node.details) { componentRelations(node) }
+                DetailsPane(text: node.details, sections: node.sections) { componentRelations(node) }
             } else {
                 placeholder("Select a component to see its definition.")
             }
         case .styles:
             if let style = state.selectedStyleID.flatMap(package.style(withID:)) {
-                DetailsPane(text: style.details) {
+                DetailsPane(text: style.details, sections: style.sections) {
                     RelationBar {
                         Text(style.kind == .shared ? "Shared style" : "Reused value")
                             .foregroundStyle(.secondary)
@@ -185,7 +185,8 @@ struct InspectorView: View {
                 let layers = token.nodeIDs.compactMap(package.node(withID:)).map(\.displayName)
                 DetailsPane(
                     text: (["\(token.name)", token.value, ""] + layers.map { "• \($0)" }).joined(separator: "\n"),
-                    isJSON: false
+                    isJSON: false,
+                    sections: PropertySections.token(name: token.name, value: token.value, layers: layers)
                 ) {
                     RelationBar {
                         ColorSwatch(css: token.value)
@@ -268,52 +269,223 @@ struct InspectorView: View {
     }
 }
 
-/// Monospaced, selectable JSON with optional relation bars above it and a
-/// copy button in the corner.
+/// How the details pane shows the selection.
+enum DetailsMode: String {
+    /// Grouped, labelled properties, like a design tool's inspector.
+    case properties
+    /// The selection's full design JSON.
+    case json
+}
+
+/// The selection's details, as grouped properties (the default) or as
+/// monospaced, selectable JSON, with optional relation bars above them. The
+/// bar at the top switches between the two and copies the JSON.
 private struct DetailsPane<Header: View>: View {
     let text: String
     /// Plain text (like a color token's summary) isn't syntax-coloured.
     var isJSON = true
+    let sections: [PropertySection]
     @ViewBuilder let header: Header
 
+    @AppStorage("inspectorDetailsMode") private var mode: DetailsMode = .properties
     @State private var didCopy = false
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            ScrollView {
-                Text(isJSON ? JSONHighlighter.highlight(text) : AttributedString(text))
-                    .font(.system(size: 11, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
-            }
-            .overlay(alignment: .topTrailing) {
+            HStack(spacing: 8) {
+                Picker("Details", selection: $mode) {
+                    Text("Properties").tag(DetailsMode.properties)
+                    Text(isJSON ? "JSON" : "Text").tag(DetailsMode.json)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+
+                Spacer()
+
                 Button(action: copy) {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                         .contentTransition(.symbolEffect(.replace))
                         .frame(width: 16, height: 16)
                 }
                 .buttonStyle(.borderless)
-                .padding(6)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
-                .padding(8)
-                .help("Copy to Clipboard")
-                .accessibilityLabel("Copy to Clipboard")
+                .help(isJSON ? "Copy JSON" : "Copy to Clipboard")
+                .accessibilityLabel(isJSON ? "Copy JSON" : "Copy to Clipboard")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            header
+
+            switch mode {
+            case .properties:
+                PropertiesView(sections: sections)
+            case .json:
+                ScrollView {
+                    Text(isJSON ? JSONHighlighter.highlight(text) : AttributedString(text))
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                }
             }
         }
         .onChange(of: text) { didCopy = false }
     }
 
     private func copy() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        copyToPasteboard(text)
         didCopy = true
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             didCopy = false
         }
     }
+}
+
+/// Titled groups of label/value rows. Clicking a row copies its value.
+private struct PropertiesView: View {
+    let sections: [PropertySection]
+
+    var body: some View {
+        if sections.isEmpty {
+            Text("No properties to show. Switch to JSON to see everything.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                        if index > 0 { Divider().padding(.top, 6) }
+                        Text(section.title.uppercased())
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.top, 8)
+                            .padding(.bottom, 2)
+                        ForEach(Array(section.rows.enumerated()), id: \.offset) { _, row in
+                            PropertyRowView(row: row)
+                        }
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}
+
+private struct PropertyRowView: View {
+    let row: PropertyRow
+
+    @State private var isHovering = false
+    @State private var didCopy = false
+
+    var body: some View {
+        Button(action: copy) {
+            Group {
+                if row.isBlock {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 8) {
+                            label
+                            Spacer(minLength: 4)
+                            copyIcon
+                        }
+                        value(lineLimit: nil)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        label
+                            .frame(width: 104, alignment: .leading)
+                        value(lineLimit: 1)
+                        Spacer(minLength: 4)
+                        copyIcon
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(isHovering ? Color.primary.opacity(0.06) : .clear)
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .help("Copy “\(row.value)”")
+        .accessibilityLabel("\(row.label): \(row.value)")
+        .accessibilityHint("Copies the value")
+    }
+
+    private var label: some View {
+        Text(row.label)
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+
+    private func value(lineLimit: Int?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            if !row.swatch.isEmpty {
+                PropertySwatch(colors: row.swatch)
+                    .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+            }
+            Text(row.value)
+                .font(.system(size: 11, design: .monospaced))
+                .lineLimit(lineLimit)
+                .truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: lineLimit == nil)
+            if let token = row.token {
+                Text(token)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 3))
+                    .help("Color token “\(token)”")
+            }
+        }
+    }
+
+    private var copyIcon: some View {
+        Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .contentTransition(.symbolEffect(.replace))
+            .opacity(isHovering || didCopy ? 1 : 0)
+    }
+
+    private func copy() {
+        copyToPasteboard(row.value)
+        didCopy = true
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            didCopy = false
+        }
+    }
+}
+
+/// A small rounded square: a solid color, or a gradient through its stops.
+private struct PropertySwatch: View {
+    let colors: [String]
+
+    var body: some View {
+        let parsed = colors.compactMap(Color.init(css:))
+        RoundedRectangle(cornerRadius: 3)
+            .fill(LinearGradient(colors: parsed.isEmpty ? [.clear] : parsed, startPoint: .leading, endPoint: .trailing))
+            .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(.separator))
+            .frame(width: 12, height: 12)
+    }
+}
+
+private func copyToPasteboard(_ text: String) {
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(text, forType: .string)
 }
 
 /// A one-line caption bar linking the selection to related items.
@@ -345,25 +517,17 @@ struct ColorSwatch: View {
 }
 
 extension Color {
-    /// Parses the CSS colors design.json uses: `#rrggbb` and `rgba(r, g, b, a)`.
+    /// Parses the CSS colors design.json uses: `#rrggbb` (or `#rgb`,
+    /// `#rrggbbaa`), `rgb(r, g, b)` and `rgba(r, g, b, a)`.
     init?(css: String) {
-        let value = css.trimmingCharacters(in: .whitespaces).lowercased()
-        if value.hasPrefix("#"), value.count == 7, let rgb = Int(value.dropFirst(), radix: 16) {
-            self.init(
-                .sRGB,
-                red: Double((rgb >> 16) & 0xff) / 255,
-                green: Double((rgb >> 8) & 0xff) / 255,
-                blue: Double(rgb & 0xff) / 255
-            )
-        } else if value.hasPrefix("rgba("), value.hasSuffix(")") {
-            let parts = value.dropFirst(5).dropLast().split(separator: ",").compactMap {
-                Double($0.trimmingCharacters(in: .whitespaces))
-            }
-            guard parts.count == 4 else { return nil }
-            self.init(.sRGB, red: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, opacity: parts[3])
-        } else {
-            return nil
-        }
+        guard let color = PropertySections.parseColor(css) else { return nil }
+        self.init(
+            .sRGB,
+            red: Double(color.r) / 255,
+            green: Double(color.g) / 255,
+            blue: Double(color.b) / 255,
+            opacity: color.a
+        )
     }
 }
 
