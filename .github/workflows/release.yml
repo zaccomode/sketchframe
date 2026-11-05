@@ -27,7 +27,7 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: check
         shell: bash
@@ -81,7 +81,7 @@ jobs:
     env:
       VERSION: ${{ needs.verify.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pinned rather than the newest Xcode_27*: the image also carries
       # release candidates, which should never build a release.
@@ -224,7 +224,7 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent "$APP" "dist/Sketchframe-$VERSION.zip"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

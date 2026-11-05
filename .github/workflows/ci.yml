@@ -19,7 +19,7 @@ jobs:
     # queues until it times out rather than failing.
     runs-on: xcode-27
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pinned rather than the newest Xcode_27*: the image also carries
       # release candidates, which should never build a release.
@@ -37,7 +37,7 @@ jobs:
             -configuration Release -destination 'generic/platform=macOS' \
             CODE_SIGNING_ALLOWED=NO
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
