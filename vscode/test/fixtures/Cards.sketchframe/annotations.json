@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "annotations": [
+    {
+      "id": "A1",
+      "category": "development",
+      "text": "Matched by sketchId even though the node id changed",
+      "nodeId": "n99",
+      "sketchId": "11111111",
+      "layerPath": ["Somewhere", "Else"],
+      "layerName": "Card",
+      "createdAt": "2026-11-03T11:20:00Z"
+    },
+    {
+      "id": "A2",
+      "category": "interaction",
+      "text": "Matched by layer path",
+      "nodeId": "n99",
+      "layerPath": ["Tilted", "Inner"],
+      "layerName": "Inner",
+      "createdAt": "2026-11-03T11:21:00Z"
+    },
+    {
+      "id": "A3",
+      "category": "something-newer",
+      "text": "Matched by node id because the name still matches; unknown category reads as content",
+      "nodeId": "n5",
+      "layerPath": [],
+      "layerName": "Badge",
+      "createdAt": "2026-11-03T11:22:00Z"
+    },
+    {
+      "id": "A4",
+      "category": "content",
+      "text": "Detached: the layer is gone",
+      "nodeId": "n2",
+      "layerPath": ["Deleted"],
+      "layerName": "Deleted",
+      "createdAt": "2026-11-03T11:23:00Z"
+    }
+  ]
+}

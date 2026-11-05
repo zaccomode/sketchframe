@@ -1,0 +1,18 @@
+{
+  // F5 starts an Extension Development Host with the extension loaded from
+  // vscode/, opened on the test fixtures.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Sketchframe extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode",
+        "${workspaceFolder}/vscode/test/fixtures"
+      ],
+      "outFiles": ["${workspaceFolder}/vscode/dist/**/*.js"],
+      "preLaunchTask": "Build Sketchframe extension"
+    }
+  ]
+}

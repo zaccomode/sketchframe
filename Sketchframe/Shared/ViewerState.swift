@@ -130,10 +130,10 @@ final class ViewerState {
 
     // MARK: Selection
 
-    /// Hovered items win; otherwise the selection that belongs to whatever
-    /// the sidebar is showing.
-    var highlight: HighlightTarget? {
-        if let hovered { return hovered }
+    /// The selection that belongs to whatever the sidebar is showing. The
+    /// canvas keeps it outlined while other things are hovered; `hovered` is
+    /// drawn separately.
+    var selection: HighlightTarget? {
         guard isSidebarShown else { return selectedNodeID.map(HighlightTarget.node) }
         switch sidebarMode {
         case .annotations:

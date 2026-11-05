@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Sketchframe extension",
+      "type": "npm",
+      "script": "build",
+      "path": "vscode",
+      "problemMatcher": "$esbuild",
+      "group": "build"
+    }
+  ]
+}
