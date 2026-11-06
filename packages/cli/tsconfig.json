@@ -1,0 +1,19 @@
+{
+  // Type checking only: the CLI and the VS Code extension bundle these
+  // sources with esbuild, and the tests run them under Node's type stripping,
+  // which is why imports carry their .ts extensions.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src", "test"]
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@sketchframe/core",
+  "private": true,
+  "version": "0.3.0",
+  "description": "Reads and writes .sketchframe files with no dependencies: the format, the archive, and the operations the CLI, MCP server and VS Code extension share",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./annotations": "./src/annotations.ts",
+    "./archive": "./src/archive.ts",
+    "./format": "./src/format.ts",
+    "./geometry": "./src/geometry.ts",
+    "./node": "./src/node.ts",
+    "./crop": "./src/crop.ts",
+    "./tools": "./src/tools.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "typescript": "^7.0.2"
+  }
+}

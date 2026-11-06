@@ -24,3 +24,6 @@ DerivedData/
 # VS Code extension
 vscode/dist/
 *.vsix
+
+# CLI and MCP server bundles
+packages/cli/dist/
