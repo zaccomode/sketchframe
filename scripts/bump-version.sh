@@ -22,6 +22,8 @@ sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $version;/" \
 for package in plugin vscode packages/core packages/cli; do
   (cd "$root/$package" && npm version "$version" --no-git-tag-version --allow-same-version > /dev/null)
 done
+# The CLI's lockfile records the version of the core it links to.
+(cd "$root/packages/cli" && npm install --package-lock-only > /dev/null)
 
 # Sketch shows the plugin's version from its manifest, which skpm copies as
 # it is rather than taking it from package.json.
