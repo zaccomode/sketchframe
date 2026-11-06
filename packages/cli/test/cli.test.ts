@@ -5,7 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs, run } from '../src/cli.ts';
+
+// esbuild embeds the skill in the bundle; the sources read it from a global.
+(globalThis as { SKETCHFRAME_SKILL?: string }).SKETCHFRAME_SKILL = readFileSync(
+  new URL('../../../skills/sketchframe/SKILL.md', import.meta.url),
+  'utf8',
+);
 
 const fixture = fileURLToPath(new URL('../../core/test/fixtures/Cards.sketchframe', import.meta.url));
 
@@ -97,4 +104,24 @@ test('serves the tools over MCP', async () => {
   assert.equal(screenshot.result.content[0].mimeType, 'image/png');
   assert.equal(missing.result.isError, true);
   assert.equal(unknown.error.code, -32601);
+});
+
+test('init sets a repository up and leaves existing setup alone', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sketchframe-init-'));
+  try {
+    writeFileSync(join(dir, '.mcp.json'), JSON.stringify({ mcpServers: { other: { command: 'x' } } }));
+    writeFileSync(join(dir, '.gitattributes'), '*.png binary');
+    const first = capture(['init', dir]).output;
+    assert.match(first, /added the sketchframe MCP server/);
+    const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'));
+    assert.deepEqual(Object.keys(config.mcpServers), ['other', 'sketchframe']);
+    assert.deepEqual(config.mcpServers.sketchframe.args, ['-y', 'sketchframe', 'mcp']);
+    assert.match(readFileSync(join(dir, '.claude/skills/sketchframe/SKILL.md'), 'utf8'), /^---\nname: sketchframe/);
+    assert.equal(readFileSync(join(dir, '.gitattributes'), 'utf8'), '*.png binary\n*.sketchframe diff=sketchframe\n');
+    const second = capture(['init', dir]).output;
+    assert.match(second, /already has a sketchframe server/);
+    assert.match(second, /already has a \*\.sketchframe rule/);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });

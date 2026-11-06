@@ -5,6 +5,9 @@ import * as esbuild from 'esbuild';
 import { readFileSync } from 'node:fs';
 
 const { version } = JSON.parse(readFileSync(new URL('package.json', import.meta.url), 'utf8'));
+// The skill lives at the repository root, where people browsing it find it;
+// the CLI embeds it for `sketchframe init` and `sketchframe skill`.
+const skill = readFileSync(new URL('../../skills/sketchframe/SKILL.md', import.meta.url), 'utf8');
 
 const shared = {
   bundle: true,
@@ -13,7 +16,7 @@ const shared = {
   target: 'node18',
   minify: false,
   legalComments: 'inline',
-  define: { SKETCHFRAME_VERSION: JSON.stringify(version) },
+  define: { SKETCHFRAME_VERSION: JSON.stringify(version), SKETCHFRAME_SKILL: JSON.stringify(skill) },
   logLevel: 'info',
 };
 

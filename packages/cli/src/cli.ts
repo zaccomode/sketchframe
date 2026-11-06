@@ -9,6 +9,7 @@ import { basename, join, resolve } from 'node:path';
 import { catText, htmlForNode, outline, requireNode, summary, toJSON, nodeContext, tokens, annotations } from '@sketchframe/core';
 import { cropPreview } from '@sketchframe/core/crop';
 import { extract, findSketchframes, openFiles, openSketchframe, pack } from '@sketchframe/core/node';
+import { init, skillText } from './init.ts';
 import { startServer } from './mcp.ts';
 import { version } from './version.ts';
 
@@ -27,6 +28,10 @@ Usage:
   sketchframe extract <file> <dir>              Unpack an archive into a folder
   sketchframe pack <dir> <file>                 Pack a folder (or legacy package) into an archive
   sketchframe mcp                               Run the MCP server on stdio
+  sketchframe init [dir] [--force] [--no-mcp] [--no-skill] [--no-gitattributes]
+                                                Set a repository up for Claude Code: .mcp.json,
+                                                the skill and the git diff driver
+  sketchframe skill                             Print the Claude skill (SKILL.md)
 
 <node> is an id from the outline (n4), a sketchId, a layer path (Header/Title)
 or a unique layer name. <file> can be a .sketchframe archive or a legacy
@@ -146,6 +151,20 @@ export function run(argv: string[], out: (text: string) => void = (text) => proc
     case 'pack': {
       pack(need(rest, 0, '<dir>'), need(rest, 1, '<file>'));
       print(`Packed ${rest[0]} into ${rest[1]}.`);
+      return 0;
+    }
+    case 'init': {
+      const report = init(resolve(rest[0] ?? '.'), {
+        mcp: !flags['no-mcp'],
+        skill: !flags['no-skill'],
+        gitattributes: !flags['no-gitattributes'],
+        force: Boolean(flags.force),
+      });
+      print(`${report.join('\n')}\nCommit these files so cloud sessions get them too.`);
+      return 0;
+    }
+    case 'skill': {
+      out(skillText());
       return 0;
     }
     default:
