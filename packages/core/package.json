@@ -13,7 +13,8 @@
     "./geometry": "./src/geometry.ts",
     "./node": "./src/node.ts",
     "./crop": "./src/crop.ts",
-    "./tools": "./src/tools.ts"
+    "./tools": "./src/tools.ts",
+    "./preview": "./src/preview.ts"
   },
   "scripts": {
     "typecheck": "tsc -p .",

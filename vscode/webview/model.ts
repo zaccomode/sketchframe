@@ -8,6 +8,18 @@ import { outlineSegments, outlineShape, transformSegments } from './outline.ts';
 import type { OutlineShape, Segment } from './outline.ts';
 import { nodeSections, styleSections } from './properties.ts';
 import type { PropertySection } from './properties.ts';
+// Annotations and the preview origin are shared with the CLI and MCP server.
+import { annotatedNode, isoNow, parseAnnotations } from '../../packages/core/src/annotations.ts';
+import type { AnnotationCategory, SketchframeAnnotation } from '../../packages/core/src/annotations.ts';
+import { frameOrigin } from '../../packages/core/src/preview.ts';
+
+export {
+  annotationCategories,
+  annotationsFileText,
+  isoNow,
+  parseAnnotations,
+} from '../../packages/core/src/annotations.ts';
+export type { AnnotationCategory, SketchframeAnnotation } from '../../packages/core/src/annotations.ts';
 
 type JSONObject = Record<string, unknown>;
 
@@ -76,22 +88,6 @@ export type SketchframeColorToken = {
   /** CSS color, e.g. `#3b5bdb` or `rgba(0, 0, 0, 0.5)`. */
   value: string;
   nodeIds: string[];
-};
-
-export const annotationCategories = ['development', 'interaction', 'accessibility', 'content'] as const;
-export type AnnotationCategory = (typeof annotationCategories)[number];
-
-export type SketchframeAnnotation = {
-  id: string;
-  /** The node's `id` when the note was written; renumbered on re-export. */
-  nodeId: string;
-  sketchId?: string;
-  layerPath: string[];
-  layerName: string;
-  category: AnnotationCategory;
-  text: string;
-  createdAt: string;
-  updatedAt?: string;
 };
 
 export type SketchframePackage = {
@@ -262,18 +258,7 @@ export function ancestorIds(pkg: SketchframePackage, id: string): string[] {
  * `undefined` if the layer is gone.
  */
 export function nodeForAnnotation(pkg: SketchframePackage, annotation: SketchframeAnnotation) {
-  const nodes = allNodes(pkg.root);
-  if (annotation.sketchId) {
-    const node = nodes.find((node) => node.sketchId === annotation.sketchId);
-    if (node) return node;
-  }
-  if (annotation.layerPath.length > 0) {
-    const key = JSON.stringify(annotation.layerPath);
-    const node = nodes.find((node) => JSON.stringify(node.path) === key);
-    if (node) return node;
-  }
-  const node = find(annotation.nodeId, pkg.root);
-  return node?.name === annotation.layerName ? node : undefined;
+  return annotatedNode(allNodes(pkg.root), annotation);
 }
 
 function find(id: string, node: SketchframeNode): SketchframeNode | undefined {
@@ -287,48 +272,6 @@ function find(id: string, node: SketchframeNode): SketchframeNode | undefined {
 
 // MARK: Annotations
 
-/** Unreadable files read as no annotations; unknown categories read as `content`. */
-export function parseAnnotations(text: string | null): SketchframeAnnotation[] {
-  if (!text) return [];
-  let file: unknown;
-  try {
-    file = JSON.parse(text);
-  } catch {
-    return [];
-  }
-  if (!isObject(file) || !Array.isArray(file.annotations)) return [];
-  return file.annotations.flatMap((value): SketchframeAnnotation[] => {
-    if (!isObject(value)) return [];
-    const id = string(value.id);
-    const nodeId = string(value.nodeId);
-    const text = string(value.text);
-    const createdAt = string(value.createdAt);
-    if (id === undefined || nodeId === undefined || text === undefined || createdAt === undefined) return [];
-    const category = annotationCategories.find((category) => category === value.category) ?? 'content';
-    return [
-      {
-        id,
-        nodeId,
-        sketchId: string(value.sketchId),
-        layerPath: Array.isArray(value.layerPath) ? value.layerPath.filter((name) => typeof name === 'string') : [],
-        layerName: string(value.layerName) ?? '',
-        category,
-        text,
-        createdAt,
-        updatedAt: string(value.updatedAt),
-      },
-    ];
-  });
-}
-
-/**
- * annotations.json's text, matching the Mac app: sorted keys, and dates
- * without fractional seconds, which Swift's `.iso8601` decoder rejects.
- */
-export function annotationsFileText(annotations: SketchframeAnnotation[]): string {
-  return `${prettyJSON({ version: 1, annotations })}\n`;
-}
-
 export function newAnnotation(node: SketchframeNode, category: AnnotationCategory, text: string): SketchframeAnnotation {
   return {
     id: crypto.randomUUID().toUpperCase(),
@@ -340,11 +283,6 @@ export function newAnnotation(node: SketchframeNode, category: AnnotationCategor
     text,
     createdAt: isoNow(),
   };
-}
-
-/** `2026-11-03T11:20:00Z`: ISO 8601 to the second, as the Mac app writes it. */
-export function isoNow(): string {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 // MARK: Parsing
@@ -469,54 +407,6 @@ function reusedStyles(styles: JSONObject, nodes: SketchframeNode[]): Sketchframe
       nodeIds: nodes.filter((node) => node.styleKeys.includes(key)).map((node) => node.id),
     }))
     .sort((a, b) => rank(a) - rank(b) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-}
-
-/**
- * Uses `preview.origin` when the exporter recorded it. Older exports don't
- * have it, so it's derived from the root's shadows and borders (which Sketch
- * renders outside the frame), falling back to an even split when that doesn't
- * account for all of the overflow.
- */
-function frameOrigin(preview: JSONObject, root: JSONObject, styles: JSONObject, overflow: Size): Point {
-  if (isObject(preview.origin)) {
-    const x = number(preview.origin.x);
-    const y = number(preview.origin.y);
-    if (x !== undefined && y !== undefined) return { x, y };
-  }
-
-  const resolved = (field: string) => (typeof root[field] === 'string' ? styles[root[field]] : root[field]);
-
-  let left = 0;
-  let top = 0;
-  let right = 0;
-  let bottom = 0;
-  const extend = (l: number, t: number, r: number, b: number) => {
-    left = Math.max(left, l);
-    top = Math.max(top, t);
-    right = Math.max(right, r);
-    bottom = Math.max(bottom, b);
-  };
-
-  const effects = resolved('effects');
-  const shadows = isObject(effects) && Array.isArray(effects.shadows) ? effects.shadows.filter(isObject) : [];
-  for (const shadow of shadows) {
-    if (shadow.inset === true) continue;
-    const x = number(shadow.x) ?? 0;
-    const y = number(shadow.y) ?? 0;
-    const reach = (number(shadow.blur) ?? 0) + (number(shadow.spread) ?? 0);
-    extend(reach - x, reach - y, reach + x, reach + y);
-  }
-  const borders = resolved('borders');
-  for (const border of Array.isArray(borders) ? borders.filter(isObject) : []) {
-    const thickness = number(border.thickness) ?? 0;
-    if (border.position === 'outside') extend(thickness, thickness, thickness, thickness);
-    if (border.position === 'center') extend(thickness / 2, thickness / 2, thickness / 2, thickness / 2);
-  }
-
-  return {
-    x: Math.abs(left + right - overflow.width) <= 1 ? left : overflow.width / 2,
-    y: Math.abs(top + bottom - overflow.height) <= 1 ? top : overflow.height / 2,
-  };
 }
 
 // MARK: Helpers

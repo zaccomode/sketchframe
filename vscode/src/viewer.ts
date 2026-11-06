@@ -1,13 +1,21 @@
 import * as vscode from 'vscode';
+import { archiveFiles, text, updateArchive } from '../../packages/core/src/archive.ts';
+import { ANNOTATIONS_FILE, DEFAULT_PREVIEW_FILE, DESIGN_FILE, isObject } from '../../packages/core/src/format.ts';
 import { annotationsFileText } from '../webview/model.ts';
 import type { SketchframeAnnotation } from '../webview/model.ts';
 import type { HostMessage, ViewerCommand, ViewerSettings, WebviewMessage } from './protocol.ts';
 import { jsonTokenColors } from './theme.ts';
 
 /**
- * One open Sketchframe: a webview showing a package folder, whether it was
- * opened as the custom editor for `design.json` or with the Open Sketchframe
- * command on the folder.
+ * How a Sketchframe is stored: `archive` is the single-file zip (format v2),
+ * `folder` the older package whose files sit in a directory.
+ */
+export type SketchframeKind = 'archive' | 'folder';
+
+/**
+ * One open Sketchframe in a webview: an archive opened as the custom editor
+ * for `*.sketchframe`, or a folder package opened through its `design.json`
+ * or with the Open Sketchframe command on the folder.
  */
 export class Viewer implements vscode.Disposable {
   /** The viewer whose tab is active, which the toolbar commands act on. */
@@ -15,20 +23,24 @@ export class Viewer implements vscode.Disposable {
   private static readonly open = new Set<Viewer>();
 
   readonly packageUri: vscode.Uri;
+  readonly kind: SketchframeKind;
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
   private readonly disposables: vscode.Disposable[] = [];
   private revision = 0;
   private reloadTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(packageUri: vscode.Uri, panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  constructor(packageUri: vscode.Uri, kind: SketchframeKind, panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
     this.packageUri = packageUri;
+    this.kind = kind;
     this.panel = panel;
     this.extensionUri = extensionUri;
     const webview = panel.webview;
+    // An archive's preview reaches the webview as a data URI, so only a
+    // folder needs to be readable from it.
     webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist'), packageUri],
+      localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist'), ...(kind === 'folder' ? [packageUri] : [])],
     };
     webview.html = this.html(webview);
 
@@ -48,9 +60,12 @@ export class Viewer implements vscode.Disposable {
       panel.onDidDispose(() => this.dispose()),
     );
 
-    // Re-exporting from Sketch over an open package rewrites these files.
+    // Re-exporting from Sketch over an open Sketchframe rewrites it (or, for
+    // a folder, these files in it).
     const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(packageUri, '{design.json,annotations.json,*.png}'),
+      kind === 'archive'
+        ? new vscode.RelativePattern(vscode.Uri.joinPath(packageUri, '..'), packageUri.path.split('/').pop() ?? '')
+        : new vscode.RelativePattern(packageUri, '{design.json,annotations.json,*.png}'),
     );
     const reload = () => this.scheduleReload();
     watcher.onDidChange(reload);
@@ -105,28 +120,55 @@ export class Viewer implements vscode.Disposable {
   }
 
   private async load() {
-    const read = async (name: string) => {
-      try {
-        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.packageUri, name));
-        return new TextDecoder().decode(bytes);
-      } catch {
-        return null;
-      }
-    };
-
-    const design = await read('design.json');
-    if (design === null) {
+    let files: { design: string | undefined; annotations: string | undefined; previewUrl: string | null };
+    try {
+      files = this.kind === 'archive' ? await this.readArchive() : await this.readFolder();
+    } catch (error) {
+      this.post({ type: 'error', message: `This Sketchframe couldn't be read. ${error instanceof Error ? error.message : error}` });
+      return;
+    }
+    if (files.design === undefined) {
       this.post({ type: 'error', message: 'This Sketchframe has no design.json.' });
       return;
     }
     this.post({
       type: 'load',
-      design,
-      annotations: await read('annotations.json'),
-      baseUri: this.panel.webview.asWebviewUri(this.packageUri).toString().replace(/\/$/, ''),
-      revision: ++this.revision,
+      design: files.design,
+      annotations: files.annotations ?? null,
+      previewUrl: files.previewUrl,
       canEditAnnotations: vscode.workspace.fs.isWritableFileSystem(this.packageUri.scheme) !== false,
     });
+  }
+
+  private async readArchive() {
+    const files = archiveFiles(await vscode.workspace.fs.readFile(this.packageUri));
+    const design = text(files, DESIGN_FILE);
+    const src = previewSrc(design);
+    const preview = files.read(src);
+    return {
+      design,
+      annotations: text(files, ANNOTATIONS_FILE),
+      previewUrl: preview ? `data:${imageType(src)};base64,${Buffer.from(preview).toString('base64')}` : null,
+    };
+  }
+
+  private async readFolder() {
+    const read = async (name: string) => {
+      try {
+        const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(this.packageUri, name));
+        return new TextDecoder().decode(bytes);
+      } catch {
+        return undefined;
+      }
+    };
+    const design = await read(DESIGN_FILE);
+    const preview = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.packageUri, previewSrc(design)));
+    return {
+      design,
+      annotations: await read(ANNOTATIONS_FILE),
+      // The query changes on every reload, so the webview re-fetches it.
+      previewUrl: `${preview.toString()}?v=${++this.revision}`,
+    };
   }
 
   private async sendSettings() {
@@ -137,13 +179,21 @@ export class Viewer implements vscode.Disposable {
 
   /**
    * Writes annotations.json the way the Mac app does, or removes it when the
-   * last annotation is deleted. The file watcher then reloads the viewer.
+   * last annotation is deleted: into the archive, which is rewritten, or into
+   * the folder. Through `vscode.workspace.fs`, so it also works over Remote
+   * SSH and in Codespaces. The file watcher then reloads the viewer.
    */
   private async saveAnnotations(annotations: SketchframeAnnotation[]) {
-    const uri = vscode.Uri.joinPath(this.packageUri, 'annotations.json');
+    const contents = annotations.length > 0 ? annotationsFileText(annotations) : null;
     try {
-      if (annotations.length > 0) {
-        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(annotationsFileText(annotations)));
+      if (this.kind === 'archive') {
+        const bytes = await vscode.workspace.fs.readFile(this.packageUri);
+        await vscode.workspace.fs.writeFile(this.packageUri, updateArchive(bytes, { [ANNOTATIONS_FILE]: contents }));
+        return;
+      }
+      const uri = vscode.Uri.joinPath(this.packageUri, ANNOTATIONS_FILE);
+      if (contents !== null) {
+        await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(contents));
       } else {
         await vscode.workspace.fs.delete(uri).then(undefined, () => {});
       }
@@ -180,4 +230,22 @@ export class Viewer implements vscode.Disposable {
 </body>
 </html>`;
   }
+}
+
+/** design.json's `preview.src`, or the default when it can't be read. */
+function previewSrc(design: string | undefined): string {
+  try {
+    const parsed: unknown = JSON.parse(design ?? '');
+    if (isObject(parsed) && isObject(parsed.preview) && typeof parsed.preview.src === 'string') return parsed.preview.src;
+  } catch {
+    // Falls through to the default; the webview reports the unreadable design.
+  }
+  return DEFAULT_PREVIEW_FILE;
+}
+
+function imageType(path: string): string {
+  const extension = path.split('.').pop()?.toLowerCase();
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'gif' || extension === 'webp') return `image/${extension}`;
+  return 'image/png';
 }

@@ -202,7 +202,7 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
   switch (data.type) {
     case 'load':
       state.canEditAnnotations = data.canEditAnnotations;
-      load(data.design, data.annotations, `${data.baseUri}/`, data.revision);
+      load(data.design, data.annotations, data.previewUrl);
       break;
     case 'settings':
       applySettings(data.settings);
@@ -218,14 +218,14 @@ window.addEventListener('message', (event: MessageEvent<HostMessage>) => {
   }
 });
 
-function load(design: string, annotations: string | null, baseUrl: string, revision: number) {
+function load(design: string, annotations: string | null, previewUrl: string | null) {
   try {
     const pkg = parsePackage(design, annotations);
     const isFirstLoad = state.pkg === undefined;
     state.pkg = pkg;
     state.annotations = pkg.annotations;
     state.error = undefined;
-    state.previewUrl = `${baseUrl}${pkg.previewSrc}?v=${revision}`;
+    state.previewUrl = previewUrl ?? '';
     // Node ids are renumbered on re-export, so a reload keeps only the
     // selections that still exist.
     for (const tab of ['layers', 'components'] as const) {
