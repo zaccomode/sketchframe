@@ -10,7 +10,7 @@ To create a Sketchframe, you'll need to install the Sketch plugin.
 
 To export a frame as a `.sketchframe`, use Plugins > Sketchframe > Export Selected Frame..., then select the destination folder.
 
-If you don't have the Sketchframe application (see below), `.sketchframe` files will appear as folders on your system, which can be opened and navigated like a zip archive.
+A `.sketchframe` is a single file (a zip archive, like `.docx` or `.sketch`), so it can be shared through Slack, email or any cloud storage, and committed to git. Without the Sketchframe app it can be opened like any zip archive. Older exports are folders with the same files inside; everything below still reads those, and re-exporting over one replaces it with a single file.
 
 ## The Sketchframe App
 
@@ -20,8 +20,18 @@ The Sketchframe application also contains a surface for you to annotate your des
 
 ## The VS Code Extension
 
-You can also view and annotate Sketchframes inside VS Code, with the same layout as the app. Install _Sketchframe_ from the VS Code Marketplace, or download the `.vsix` from a [release](https://github.com/zaccomode/sketchframe/releases). See [vscode/README.md](vscode/README.md) for how to open one.
+You can also view and annotate Sketchframes inside VS Code, with the same layout as the app. It also gives agents in VS Code the same tools as the MCP server. Install _Sketchframe_ from the VS Code Marketplace, or download the `.vsix` from a [release](https://github.com/zaccomode/sketchframe/releases). See [vscode/README.md](vscode/README.md) for how to open one.
 
 ## Working with AI
 
-Sketchframe files can be easily read by any AI agent. Every `.sketchframe` file comes bundled with instructions for how to read the file.
+Sketchframes are made for handing designs to AI agents. The [`sketchframe`](packages/cli/README.md) npm package gives agents targeted tools, modelled on Figma's MCP server, instead of a raw dump of the design: an outline of the layer tree, one layer's full design context, a screenshot of one layer, the design's color tokens and its annotations. It's both a CLI and an MCP server, and it runs anywhere Node does, including Claude Code on the web.
+
+To set a repository up for Claude Code, run this in it and commit the result:
+
+```bash
+npx sketchframe init
+```
+
+That adds the MCP server to `.mcp.json`, a Claude skill that teaches the workflow, and a git diff driver so `git diff` shows design changes as text. See [docs/agents.md](docs/agents.md) for the details, including setups with no network access.
+
+Agents without the tools can still read a Sketchframe with `unzip -p Design.sketchframe design.json`; every file comes bundled with a README explaining how. The format is documented in [docs/FORMAT.md](docs/FORMAT.md).

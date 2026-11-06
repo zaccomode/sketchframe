@@ -97,6 +97,7 @@ export function startServer(cwd = process.cwd()) {
       }
     }
   });
-  lines.on('close', () => process.exit(0));
+  // When the client closes stdin, nothing keeps the process alive, so it
+  // exits once the last reply has been written.
   process.stderr.write(`sketchframe MCP server ${version} on stdio (cwd ${cwd})\n`);
 }

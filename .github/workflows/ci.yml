@@ -89,3 +89,60 @@ jobs:
           name: sketchframe-vscode
           path: vscode/*.vsix
           if-no-files-found: error
+
+  tools:
+    # The shared core, and the CLI and MCP server on it. Linux on purpose:
+    # that's where cloud agent sessions run them.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 24: the tests run the TypeScript sources directly, which needs
+      # Node's built-in type stripping.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            packages/core/package-lock.json
+            packages/cli/package-lock.json
+
+      - name: Typecheck and test the core
+        working-directory: packages/core
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+
+      - name: Typecheck, test and build the CLI
+        working-directory: packages/cli
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+
+      # package.json promises Node 18, which has no type stripping, so this
+      # runs the bundle rather than the sources.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 18
+
+      - name: Run the bundle on Node 18
+        run: |
+          set -euo pipefail
+          cli=packages/cli/dist/sketchframe.cjs
+          node "$cli" pack packages/core/test/fixtures/Cards.sketchframe "$RUNNER_TEMP/Cards.sketchframe"
+          node "$cli" outline "$RUNNER_TEMP/Cards.sketchframe"
+          node "$cli" crop "$RUNNER_TEMP/Cards.sketchframe" n2 -o "$RUNNER_TEMP/card.png"
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | node packages/cli/dist/sketchframe-mcp.cjs | grep get_screenshot > /dev/null
+
+      - name: Upload the CLI bundle, so a pull request's build can be tried
+        uses: actions/upload-artifact@v7
+        with:
+          name: sketchframe-cli
+          path: packages/cli/dist/*.cjs
+          if-no-files-found: error

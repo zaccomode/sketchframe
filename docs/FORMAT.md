@@ -1,29 +1,70 @@
-# The `.sketchframe` format (v1)
+# The `.sketchframe` format (v2)
 
-A `.sketchframe` is a **directory** that macOS shows as a single file. Its
-UTI is `com.isaacshea.sketchframe`, which conforms to `com.apple.package`.
-Agents can read the files inside directly. Finder users get a Quick Look preview.
+A `.sketchframe` is a **single-file zip archive**, like `.docx` or `.sketch`.
+Its UTI is `com.isaacshea.sketchframe`, which conforms to `public.data` and
+`public.composite-content`, and its media type is
+`application/vnd.sketchframe+zip`.
 
 ```
-Checkout.sketchframe/
-├── README.md          how to read the package (for agents that land here)
+Checkout.sketchframe (zip)
+├── mimetype           application/vnd.sketchframe+zip (first entry, stored)
+├── README.md          how to read the file (for agents that unzip it)
 ├── design.json        the design tree (this document)
-├── preview@2x.png     the frame rendered at 2x
 ├── annotations.json   notes left on layers in the Sketchframe app (optional)
+├── preview@2x.png     the frame rendered at 2x
 └── assets/
     ├── img_<hash>.png|jpg|…   original image bytes (image layers, image fills)
     └── vec_<hash>.svg         vectors and shape-only groups, rendered by Sketch
 ```
 
-All `src` paths are relative to the package root.
+All `src` paths are relative to the archive's root.
+
+## The archive
+
+- **`mimetype` comes first, uncompressed, with no extra field**, as in EPUB
+  and ODF. Its contents are the 31 bytes `application/vnd.sketchframe+zip`, so
+  bytes 30–37 of the file are `mimetype` and bytes 38–68 are the media type.
+  Tools can recognise a Sketchframe from its first bytes without unzipping it.
+- **Images are stored** (method 0), since PNG and JPEG are already compressed;
+  text is deflated (method 8).
+- Writers put `README.md`, `design.json`, `annotations.json` and the preview
+  first, then everything else in path order, and use a fixed modification
+  date, so the same contents give the same bytes.
+- Readers ignore directory entries, `__MACOSX/` and `.DS_Store`, and accept a
+  zip whose files all sit inside one folder (as Finder's **Compress** makes)
+  as if that folder were the root.
+- Saving annotations rewrites the archive: write a new file beside it, then
+  replace the original.
+
+### Reading one without the tools
+
+```bash
+unzip -p Checkout.sketchframe design.json
+unzip -p Checkout.sketchframe preview@2x.png > preview.png
+python3 -m zipfile -e Checkout.sketchframe Checkout/
+```
+
+`sketchframe extract` and `sketchframe pack` convert between the archive and
+a folder (see [agents.md](agents.md)).
+
+### Version 1: the folder package
+
+Before v2, a `.sketchframe` was a **directory** with the same files inside
+(no `mimetype`), which macOS showed as a single file because the type
+conformed to `com.apple.package`. The Mac app, Quick Look, the VS Code
+extension and the `sketchframe` tools all still read folder packages; the app
+declares them as `com.isaacshea.sketchframe.package`. The Sketch plugin
+replaces a folder package with an archive when re-exporting over it, keeping
+its annotations. `design.json` itself is unchanged between the versions apart
+from `version`.
 
 ## `design.json`
 
 ```jsonc
 {
   "format": "sketchframe",
-  "version": 1,
-  "generator": "sketchframe 0.1.0 / Sketch 2026.2",
+  "version": 2,
+  "generator": "sketchframe 0.4.0 / Sketch 2026.2",
   "exportedAt": "2026-11-03T08:00:00.000Z",
   "name": "Checkout",
   "preview": { "src": "preview@2x.png", "scale": 2, "pixelWidth": 750, "pixelHeight": 1624, "origin": { "x": 0, "y": 0 } },
@@ -116,8 +157,8 @@ Glass blurs add `brightness`, `distortion`, `depth`, `chromaticAberration`,
 
 ## `annotations.json`
 
-Written by the Sketchframe app when someone annotates a layer. The Sketch plugin
-keeps it when re-exporting over an existing package. Agents should treat these
+Written by the Sketchframe app or the VS Code extension when someone annotates a
+layer. The Sketch plugin keeps it when re-exporting over an existing file. Agents should treat these
 notes as instructions about the layers they're attached to.
 
 ```jsonc

@@ -1,12 +1,13 @@
 name: Release
 
 # A v* tag is the trigger, and the tag has to agree with the app's
-# MARKETING_VERSION and the plugin's and the VS Code extension's package.json,
-# so all three always ship together under one version.
+# MARKETING_VERSION and the plugin's, the VS Code extension's and the CLI's
+# package.json, so all of them always ship together under one version.
 # scripts/bump-version.sh sets all of them.
 #
 # Publishing the draft this leaves is what puts the extension on the VS Code
-# Marketplace; see publish-extension.yml.
+# Marketplace and the CLI on npm; see publish-extension.yml and
+# publish-npm.yml.
 #
 # Ordinarily nobody pushes that tag by hand: tag-release.yml creates it when a
 # version bump lands on main, then dispatches this workflow on it. A tag pushed
@@ -58,10 +59,11 @@ jobs:
           # Sketch shows the manifest's version, which skpm doesn't take from package.json.
           manifest="v$(node -p "require('./plugin/src/manifest.json').version")"
           extension="v$(node -p "require('./vscode/package.json').version")"
-          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$manifest" ] || [ "$tag" != "$extension" ]; then
-            echo "::error::Tag $tag, app $app, plugin $plugin (manifest $manifest) and" \
-                 "VS Code extension $extension must all match. Run scripts/bump-version.sh," \
-                 "then re-tag."
+          cli="v$(node -p "require('./packages/cli/package.json').version")"
+          if [ "$tag" != "$app" ] || [ "$tag" != "$plugin" ] || [ "$tag" != "$manifest" ] || [ "$tag" != "$extension" ] || [ "$tag" != "$cli" ]; then
+            echo "::error::Tag $tag, app $app, plugin $plugin (manifest $manifest)," \
+                 "VS Code extension $extension and CLI $cli must all match. Run" \
+                 "scripts/bump-version.sh, then re-tag."
             exit 1
           fi
 
@@ -267,6 +269,21 @@ jobs:
           npm test
           npm run package
           mv "sketchframe-$VERSION.vsix" ../dist/
+
+      # The npm package goes on the release as the tarball publish-npm.yml
+      # publishes unchanged, and its bundle on its own, for repositories that
+      # commit it rather than install it (see docs/agents.md).
+      - name: Test and package the CLI and MCP server
+        run: |
+          set -euo pipefail
+          (cd packages/core && npm ci && npm run typecheck && npm test)
+          cd packages/cli
+          npm ci
+          npm run typecheck
+          npm test
+          npm pack
+          mv "sketchframe-$VERSION.tgz" ../../dist/
+          cp dist/sketchframe.cjs "../../dist/sketchframe-$VERSION.cjs"
 
       # The runner is destroyed after this, so this is hygiene rather than a
       # control, but it matters the day this runs somewhere self-hosted.

@@ -1,6 +1,6 @@
 # Releasing
 
-Sketchframe ships through GitHub Releases. Each release carries three files
+Sketchframe ships through GitHub Releases. Each release carries these files
 under one version:
 
 - `Sketchframe-<version>.zip`: the macOS app, signed with Developer ID,
@@ -8,6 +8,10 @@ under one version:
 - `sketchframe-<version>.sketchplugin.zip`: the Sketch plugin.
 - `sketchframe-<version>.vsix`: the VS Code extension. Publishing the release
   also puts this file on the VS Code Marketplace.
+- `sketchframe-<version>.tgz`: the `sketchframe` npm package (the CLI and
+  MCP server). Publishing the release also puts this file on npm.
+- `sketchframe-<version>.cjs`: the CLI and MCP server bundled into one file,
+  for repositories that commit it rather than install it from npm.
 
 ## Cutting a Release
 
@@ -16,26 +20,30 @@ under one version:
    a release reads it:
    - `MARKETING_VERSION` on every target in the Xcode project (Sketchframe,
      SketchframePreview and SketchframeThumbnail).
-   - `version` in `plugin/package.json` and `vscode/package.json`, and their
+   - `version` in `plugin/package.json`, `vscode/package.json`,
+     `packages/core/package.json` and `packages/cli/package.json`, and their
      lockfiles.
 2. Once CI passes on the merge, `.github/workflows/tag-release.yml` sees that
    `MARKETING_VERSION` changed, tags that commit `v` plus the version, and
    starts `.github/workflows/release.yml` on the tag.
 3. `release.yml` checks that the tag, every target's `MARKETING_VERSION`, the
-   plugin's version and the extension's version all match. It then builds,
+   plugin's, the extension's and the CLI's versions all match. It then builds,
    signs and notarises the app, builds the plugin, tests and packages the
-   extension, and uploads all three to a **draft** release.
+   extension and the CLI, and uploads them all to a **draft** release.
 4. Download the files from the draft and check them:
    - Open the app from a fresh download and check Gatekeeper lets it launch
      without a warning.
    - Install the plugin in Sketch.
    - Install the extension with **Extensions → … → Install from VSIX…** and
      open a Sketchframe with it.
+   - Run `npx ./sketchframe-<version>.tgz outline Some.sketchframe` (or
+     `node sketchframe-<version>.cjs …`) against an export.
 5. Publish the release in the GitHub UI. That starts
    `.github/workflows/publish-extension.yml`, which publishes the release's own
-   `.vsix` to the VS Code Marketplace. A release published with **Set as a
+   `.vsix` to the VS Code Marketplace, and `.github/workflows/publish-npm.yml`,
+   which publishes its `.tgz` to npm. A release published with **Set as a
    pre-release** ticked stays on GitHub only; unticking it later publishes it
-   to the Marketplace then.
+   then.
 
 Pushing a tag by hand still works, and is the fallback if `tag-release.yml`
 fails:
@@ -56,7 +64,8 @@ release for the tag already exists, rather than failing after the build.
 If the Marketplace publish fails, run **Actions → Publish VS Code extension →
 Run workflow** and choose the release's tag in the ref picker. A version can
 only be published to the Marketplace once, so a broken extension is fixed with
-a new version, not a re-publish.
+a new version, not a re-publish. The same goes for npm, with **Actions →
+Publish CLI to npm**.
 
 ## One-Off Setup
 
@@ -98,6 +107,27 @@ and GitHub vouches for each run with a short-lived identity token.
 The policy names the workflow by filename, so renaming
 `publish-extension.yml` means updating the policy.
 
+### npm
+
+Publishing uses npm's trusted publishing, so there is no token to store
+either. npm only lets a trusted publisher be added to a package that exists,
+so the first version is published by hand:
+
+1. Sign in to [npmjs.com](https://www.npmjs.com) with the account that will
+   own the `sketchframe` package.
+2. Download `sketchframe-<version>.tgz` from the first release with the CLI
+   and run `npm publish sketchframe-<version>.tgz --access public`.
+3. On the package's **Settings → Trusted publishing**, add a GitHub Actions
+   publisher:
+   - **Organization or user:** `zaccomode`
+   - **Repository:** `sketchframe`
+   - **Workflow filename:** `publish-npm.yml`
+   - **Environment:** `release`
+
+Until then, `publish-npm.yml` fails without affecting the rest of the
+release. The publisher names the workflow by filename, so renaming
+`publish-npm.yml` means updating it.
+
 ### Runner
 
 Both macOS jobs run on `xcode-27`, GitHub's preview image for Xcode 27,
@@ -112,5 +142,7 @@ newest `Xcode_27*` would build releases with a pre-release Xcode. When moving
 to a newer Xcode, change the path in both `ci.yml` and `release.yml`, and when
 the image goes GA (or a `macos-27` label appears), update `runs-on` in both.
 
-The VS Code extension's jobs run on Ubuntu with Node 24. Its tests run the
-TypeScript sources directly, which needs Node's built-in type stripping.
+The VS Code extension's and the CLI's jobs run on Ubuntu with Node 24. Their
+tests run the TypeScript sources directly, which needs Node's built-in type
+stripping. CI also runs the CLI's bundle on Node 18, the oldest its
+package.json allows.

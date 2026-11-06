@@ -1,0 +1,50 @@
+name: Publish CLI to npm
+
+# Publishing a GitHub release is the approval to release; this then puts that
+# release's npm tarball (the sketchframe CLI and MCP server) on npm. It
+# publishes the exact file attached to the release rather than rebuilding it,
+# so what `npx sketchframe` runs is what was checked in the draft.
+#
+# There is no token: npm trusts this workflow file, in this repository, in
+# the `release` environment, through a trusted publisher set up on the
+# package (see docs/release.md). Renaming this file means updating that.
+on:
+  release:
+    # `released`, as in publish-extension.yml: full releases, and
+    # pre-releases when they become full releases, never pre-releases.
+    types: [released]
+  # To retry a failed publish. Run it on the release's tag: the `release`
+  # environment only admits v* tags.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      # Lets npm request the GitHub identity token it exchanges with the
+      # registry, and sign the provenance statement.
+      id-token: write
+    env:
+      TAG: ${{ github.event.release.tag_name || github.ref_name }}
+    steps:
+      # Trusted publishing needs npm 11.5.1 or later, which Node 24 ships.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Download the release's npm tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern 'sketchframe-*.tgz' --dir "$RUNNER_TEMP/release"
+          ls "$RUNNER_TEMP/release"
+
+      - name: Publish to npm
+        run: npm publish "$RUNNER_TEMP"/release/sketchframe-*.tgz --access public --provenance
