@@ -8,8 +8,9 @@
 import Cocoa
 import Quartz
 
-/// Quick Look preview for `.sketchframe` packages: just the frame's preview
-/// image. The inspector and annotations live in the app.
+/// Quick Look preview for `.sketchframe` files (archives or older folder
+/// packages): just the frame's preview image. The inspector and annotations
+/// live in the app.
 class PreviewViewController: NSViewController, QLPreviewingController {
 
     override func loadView() {
@@ -17,11 +18,8 @@ class PreviewViewController: NSViewController, QLPreviewingController {
     }
 
     func preparePreviewOfFile(at url: URL) async throws {
-        let designData = try? Data(contentsOf: url.appending(path: SketchframePackage.designFileName))
-        let previewFileName = designData.map(SketchframePackage.previewFileName(in:))
-            ?? SketchframePackage.defaultPreviewFileName
         guard
-            let data = try? Data(contentsOf: url.appending(path: previewFileName)),
+            let data = SketchframePackage.previewImageData(at: url),
             let bitmap = NSBitmapImageRep(data: data),
             let image = bitmap.cgImage
         else {
