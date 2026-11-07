@@ -20,7 +20,7 @@
     "@skpm/builder": "^1.0.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.29.2",
+    "@babel/runtime": "^8.1.0",
     "@skpm/fs": "^0.2.6",
     "fflate": "^0.8.3"
   },
