@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sketchframe": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "sketchframe",
+        "mcp"
+      ]
+    }
+  }
+}
