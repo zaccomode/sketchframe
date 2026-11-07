@@ -1,0 +1,38 @@
+# Routine version updates. The security side — alerts, and the PRs that fix
+# them — is a repository setting rather than anything in this file, and is on.
+version: 2
+updates:
+  # checkout, setup-node and upload-artifact, which every workflow shares.
+  # Grouped: they move together, and CI either passes on the set or it doesn't.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  # The four npm manifests. There is no workspace root, so each has its own
+  # lockfile; `directories` covers them without four near-identical entries.
+  # packages/cli depends on packages/core through a local path, which
+  # Dependabot leaves alone — that one stays ours to bump.
+  - package-ecosystem: npm
+    directories:
+      - /plugin
+      - /vscode
+      - /packages/core
+      - /packages/cli
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Almost everything here is a devDependency (typescript, esbuild,
+    # @types/*), so ungrouped updates across four directories would be a
+    # firehose. Majors stay out of the groups, each arriving as its own
+    # reviewable PR.
+    groups:
+      dev-minor-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+      prod-minor-patch:
+        dependency-type: production
+        update-types: [minor, patch]
