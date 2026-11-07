@@ -27,13 +27,15 @@ export type HostMessage =
       type: 'load';
       /** design.json's text. */
       design: string;
-      /** annotations.json's text, if the package has one. */
+      /** annotations.json's text, if the Sketchframe has one. */
       annotations: string | null;
-      /** The package folder as a webview URI, with no trailing slash. */
-      baseUri: string;
-      /** Changes on every reload, so the webview re-fetches the preview. */
-      revision: number;
-      /** False when the package is on a read-only file system. */
+      /**
+       * The preview image: a webview URI into a folder package (with a
+       * query that changes on every reload, so the webview re-fetches it),
+       * or a data URI from an archive. `null` if the Sketchframe has none.
+       */
+      previewUrl: string | null;
+      /** False when the Sketchframe is on a read-only file system. */
       canEditAnnotations: boolean;
     }
   | { type: 'settings'; settings: ViewerSettings }

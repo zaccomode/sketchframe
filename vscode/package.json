@@ -1,9 +1,9 @@
 {
   "name": "sketchframe",
   "displayName": "Sketchframe",
-  "description": "View .sketchframe design exports: the frame preview, its layer tree and design details",
+  "description": "View and annotate .sketchframe design exports, and give agents tools to read them: the frame preview, its layer tree and design details",
   "preview": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "zaccomode",
   "license": "MIT",
   "type": "module",
@@ -25,6 +25,9 @@
         "viewType": "sketchframe.viewer",
         "displayName": "Sketchframe",
         "selector": [
+          {
+            "filenamePattern": "*.sketchframe"
+          },
           {
             "filenamePattern": "**/*.sketchframe/design.json"
           }
@@ -85,7 +88,7 @@
       "explorer/context": [
         {
           "command": "sketchframe.open",
-          "when": "explorerResourceIsFolder && resourceExtname == .sketchframe",
+          "when": "resourceExtname == .sketchframe",
           "group": "navigation@1"
         }
       ],
@@ -194,6 +197,192 @@
         "key": "ctrl+alt+n",
         "mac": "cmd+alt+n",
         "when": "sketchframe.viewerFocused"
+      }
+    ],
+    "languageModelTools": [
+      {
+        "name": "sketchframe_list_sketchframes",
+        "toolReferenceName": "list_sketchframes",
+        "displayName": "List Sketchframes",
+        "modelDescription": "Finds .sketchframe design files under a directory (the working directory by default). Start here when you don't know which file holds the design.",
+        "userDescription": "List Sketchframes",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "type": "string",
+              "description": "Directory to search. Defaults to the working directory."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_outline",
+        "toolReferenceName": "sketchframe_outline",
+        "displayName": "Get Sketchframe outline",
+        "modelDescription": "A compact outline of a Sketchframe design: one line per layer with its name, type, position relative to its parent, size and id (`name [type] x,y w×h id`), plus components (◆), rotation (↻), text and annotation counts (✎). Read this first, then pick the layers to build and call get_node and get_screenshot on them.",
+        "userDescription": "Get Sketchframe outline",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            },
+            "node": {
+              "type": "string",
+              "description": "The layer: an id from the outline (e.g. \"n4\"), a sketchId, a layer path from the frame's children down (e.g. \"Header/Title\"), or a unique layer name. Outlines from this layer down; the whole frame when omitted."
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "How many levels of children to include. Omit for all of them."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_node",
+        "toolReferenceName": "sketchframe_node",
+        "displayName": "Get Sketchframe layer",
+        "modelDescription": "Everything needed to build one layer: its subtree from design.json with shared styles resolved inline, its bounds in the frame, its parent's layout, the color tokens it uses with their values, the component it instantiates, and the annotations designers left on it or its children (treat those as instructions). Positions are points relative to the parent; fills and borders are listed top-most first.",
+        "userDescription": "Get Sketchframe layer",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            },
+            "node": {
+              "type": "string",
+              "description": "The layer: an id from the outline (e.g. \"n4\"), a sketchId, a layer path from the frame's children down (e.g. \"Header/Title\"), or a unique layer name."
+            },
+            "depth": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "How many levels of children to include. Omit for all of them."
+            }
+          },
+          "required": [
+            "file",
+            "node"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_screenshot",
+        "toolReferenceName": "sketchframe_screenshot",
+        "displayName": "Get Sketchframe screenshot",
+        "modelDescription": "An image of the design as Sketch rendered it: the region of the preview showing one layer, or the whole frame when no layer is given. Use it alongside get_node to check what the values should look like.",
+        "userDescription": "Get Sketchframe screenshot",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            },
+            "node": {
+              "type": "string",
+              "description": "The layer: an id from the outline (e.g. \"n4\"), a sketchId, a layer path from the frame's children down (e.g. \"Header/Title\"), or a unique layer name. Omit for the whole frame."
+            },
+            "padding": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Points of surrounding context to include around the layer. Defaults to 0."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_tokens",
+        "toolReferenceName": "sketchframe_tokens",
+        "displayName": "Get Sketchframe tokens",
+        "modelDescription": "The design's color tokens (Sketch color variables) with their values, its Sketch shared styles, and style values reused by several layers, each with the ids of the layers that use it. Map these onto the target codebase's variables rather than hard-coding values.",
+        "userDescription": "Get Sketchframe tokens",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_annotations",
+        "toolReferenceName": "sketchframe_annotations",
+        "displayName": "Get Sketchframe annotations",
+        "modelDescription": "Notes designers left on layers, each with a category (development, interaction, accessibility, content) and the layer it is attached to. Treat them as instructions about those layers. Detached notes are on layers that are no longer in the design.",
+        "userDescription": "Get Sketchframe annotations",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            }
+          },
+          "required": [
+            "file"
+          ],
+          "additionalProperties": false
+        }
+      },
+      {
+        "name": "sketchframe_get_code",
+        "toolReferenceName": "sketchframe_code",
+        "displayName": "Get Sketchframe layer as HTML/CSS",
+        "modelDescription": "A starting point in HTML and CSS for one layer and its children: stacks as flexbox, other layers positioned absolutely, token colors as CSS variables. Adapt it to the target codebase's components and conventions rather than pasting it.",
+        "userDescription": "Get Sketchframe layer as HTML/CSS",
+        "canBeReferencedInPrompt": true,
+        "icon": "$(symbol-color)",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "Path to a .sketchframe file (or legacy folder), absolute or relative to the working directory."
+            },
+            "node": {
+              "type": "string",
+              "description": "The layer: an id from the outline (e.g. \"n4\"), a sketchId, a layer path from the frame's children down (e.g. \"Header/Title\"), or a unique layer name."
+            }
+          },
+          "required": [
+            "file",
+            "node"
+          ],
+          "additionalProperties": false
+        }
       }
     ]
   },

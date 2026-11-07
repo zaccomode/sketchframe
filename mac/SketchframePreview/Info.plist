@@ -11,6 +11,7 @@
 			<key>QLSupportedContentTypes</key>
 			<array>
 				<string>com.isaacshea.sketchframe</string>
+				<string>com.isaacshea.sketchframe.package</string>
 			</array>
 			<key>QLSupportsSearchableItems</key>
 			<false/>

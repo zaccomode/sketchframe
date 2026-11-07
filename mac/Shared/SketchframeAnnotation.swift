@@ -28,7 +28,7 @@ nonisolated enum AnnotationCategory: String, Codable, CaseIterable, Identifiable
     }
 }
 
-/// A note left on a layer. Stored in the package's `annotations.json`.
+/// A note left on a layer. Stored in the Sketchframe's `annotations.json`.
 nonisolated struct SketchframeAnnotation: Codable, Identifiable, Hashable, Sendable {
     var id: String
     /// The node's `id` in design.json when the note was written. Ids are
@@ -79,16 +79,25 @@ nonisolated enum SketchframeAnnotationsFile {
         return try encoder.encode(Contents(annotations: annotations))
     }
 
-    /// Writes the file inside the package, or removes it when there are no
-    /// annotations left.
+    /// Saves annotations into a Sketchframe, or removes the file when there
+    /// are none left. An archive is rewritten with the new annotations.json
+    /// beside its other files, then atomically replaces the original; a folder
+    /// package gets the file written inside it.
     static func save(_ annotations: [SketchframeAnnotation], toPackageAt packageURL: URL) throws {
+        let contents = annotations.isEmpty ? nil : try encode(annotations)
+        if !SketchframeArchive.isDirectory(packageURL) {
+            var files = try SketchframeArchive.entries(in: try Data(contentsOf: packageURL))
+            files[fileName] = contents
+            try SketchframeArchive.archive(files).write(to: packageURL, options: .atomic)
+            return
+        }
         let fileURL = packageURL.appending(path: fileName)
-        if annotations.isEmpty {
+        guard let contents else {
             if FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) {
                 try FileManager.default.removeItem(at: fileURL)
             }
             return
         }
-        try encode(annotations).write(to: fileURL, options: .atomic)
+        try contents.write(to: fileURL, options: .atomic)
     }
 }

@@ -15,6 +15,18 @@
 			<array>
 				<string>com.isaacshea.sketchframe</string>
 			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Sketchframe Package</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.isaacshea.sketchframe.package</string>
+			</array>
 			<key>LSTypeIsPackage</key>
 			<true/>
 		</dict>
@@ -26,6 +38,28 @@
 			<string>com.isaacshea.sketchframe</string>
 			<key>UTTypeDescription</key>
 			<string>Sketchframe</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.composite-content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>sketchframe</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/vnd.sketchframe+zip</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.isaacshea.sketchframe.package</string>
+			<key>UTTypeDescription</key>
+			<string>Sketchframe Package</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>com.apple.package</string>

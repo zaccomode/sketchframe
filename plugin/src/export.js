@@ -9,13 +9,14 @@ import { extractSharedStyles, buildOutline } from "./postprocess";
 // package.json's fields into the plugin along with the version.
 import { version } from "./manifest.json";
 
-export const FORMAT_VERSION = 1;
+// 2: the single-file archive. 1 was the folder package; the design is the same.
+export const FORMAT_VERSION = 2;
 /** scripts/bump-version.sh keeps the manifest in step with the release. */
 export const PLUGIN_VERSION = version;
 export const PREVIEW_FILE = "preview@2x.png";
 const PREVIEW_SCALE = 2;
 
-// Builds everything that goes into a .sketchframe package for one layer.
+// Builds everything that goes into a .sketchframe for one layer.
 export function exportFrame(layer) {
   const ctx = createContext(layer);
   const root = walk(layer, ctx, null);

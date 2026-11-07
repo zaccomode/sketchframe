@@ -8,23 +8,18 @@
 import QuickLookThumbnailing
 import ImageIO
 
-/// Finder thumbnails for `.sketchframe` packages: the package's own preview
-/// PNG, decoded at the requested size and drawn aspect-fit, so small list-view
-/// icons don't decode the full @2x image.
+/// Finder thumbnails for `.sketchframe` files (archives or older folder
+/// packages): the Sketchframe's own preview PNG, decoded at the requested size
+/// and drawn aspect-fit, so small list-view icons don't decode the full @2x
+/// image.
 class ThumbnailProvider: QLThumbnailProvider {
 
     override func provideThumbnail(for request: QLFileThumbnailRequest, _ handler: @escaping (QLThumbnailReply?, Error?) -> Void) {
-        let packageURL = request.fileURL
-        let designURL = packageURL.appending(path: SketchframePackage.designFileName)
-        let previewFileName = (try? Data(contentsOf: designURL))
-            .map(SketchframePackage.previewFileName(in:))
-            ?? SketchframePackage.defaultPreviewFileName
-        let previewURL = packageURL.appending(path: previewFileName)
-
         // Decode only as many pixels as the largest thumbnail needs.
         let maxPixels = max(request.maximumSize.width, request.maximumSize.height) * request.scale
         guard
-            let source = CGImageSourceCreateWithURL(previewURL as CFURL, nil),
+            let previewData = SketchframePackage.previewImageData(at: request.fileURL),
+            let source = CGImageSourceCreateWithData(previewData as CFData, nil),
             let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,

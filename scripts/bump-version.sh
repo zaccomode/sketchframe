@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Sets the version everywhere a release reads it: every Xcode target's
-# MARKETING_VERSION, the Sketch plugin and the VS Code extension. The release
-# workflow refuses to build when these disagree with each other or the tag.
+# MARKETING_VERSION, the Sketch plugin, the VS Code extension and the CLI
+# (with the core it's built from). The release workflow refuses to build when
+# these disagree with each other or the tag.
 #
 #   scripts/bump-version.sh 0.2.0
 set -euo pipefail
@@ -18,12 +19,14 @@ sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $version;/" \
   "$root/mac/Sketchframe.xcodeproj/project.pbxproj"
 
 # --allow-same-version so a re-run, or a package already at the version, isn't an error.
-for package in plugin vscode; do
+for package in plugin vscode packages/core packages/cli; do
   (cd "$root/$package" && npm version "$version" --no-git-tag-version --allow-same-version > /dev/null)
 done
+# The CLI's lockfile records the version of the core it links to.
+(cd "$root/packages/cli" && npm install --package-lock-only > /dev/null)
 
 # Sketch shows the plugin's version from its manifest, which skpm copies as
 # it is rather than taking it from package.json.
 sed -i '' -E "s/\"version\": \"[^\"]+\"/\"version\": \"$version\"/" "$root/plugin/src/manifest.json"
 
-echo "Set the app, plugin and VS Code extension to $version."
+echo "Set the app, plugin, VS Code extension and CLI to $version."

@@ -1,0 +1,49 @@
+{
+  "name": "sketchframe",
+  "version": "0.4.0",
+  "description": "Read .sketchframe design files from the command line or an MCP server: outlines, layer details, screenshots, tokens and annotations for AI agents",
+  "keywords": [
+    "sketch",
+    "sketchframe",
+    "design",
+    "mcp",
+    "claude",
+    "ai",
+    "agents"
+  ],
+  "license": "MIT",
+  "author": "Isaac Shea",
+  "homepage": "https://github.com/zaccomode/sketchframe#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zaccomode/sketchframe.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/zaccomode/sketchframe/issues",
+  "type": "module",
+  "bin": {
+    "sketchframe": "dist/sketchframe.cjs",
+    "sketchframe-mcp": "dist/sketchframe-mcp.cjs"
+  },
+  "files": [
+    "dist/sketchframe.cjs",
+    "dist/sketchframe-mcp.cjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc -p .",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@sketchframe/core": "file:../core",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

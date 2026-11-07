@@ -9,6 +9,7 @@
 			<key>QLSupportedContentTypes</key>
 			<array>
 				<string>com.isaacshea.sketchframe</string>
+				<string>com.isaacshea.sketchframe.package</string>
 			</array>
 			<key>QLThumbnailMinimumDimension</key>
 			<integer>16</integer>

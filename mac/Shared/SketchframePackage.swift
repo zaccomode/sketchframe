@@ -158,8 +158,9 @@ nonisolated enum SketchframeError: LocalizedError {
     }
 }
 
-/// A `.sketchframe` package: `design.json`, a preview PNG, assets and
-/// (optionally) `annotations.json`. See docs/FORMAT.md.
+/// A `.sketchframe`: `design.json`, a preview PNG, assets and (optionally)
+/// `annotations.json`, in a single-file archive (format v2) or an older folder
+/// package (format v1). See docs/FORMAT.md.
 nonisolated struct SketchframePackage: Sendable {
     static let designFileName = "design.json"
     static let defaultPreviewFileName = "preview@2x.png"
@@ -189,7 +190,12 @@ nonisolated struct SketchframePackage: Sendable {
     let frameOrigin: CGPoint
     let designJSON: String
 
+    /// Reads a Sketchframe on disk: a single-file archive or a folder package.
     init(contentsOf url: URL) throws {
+        if !SketchframeArchive.isDirectory(url) {
+            try self.init(archiveData: try Data(contentsOf: url))
+            return
+        }
         let designURL = url.appending(path: Self.designFileName)
         guard let designData = try? Data(contentsOf: designURL) else {
             throw SketchframeError.missingDesign
@@ -203,7 +209,14 @@ nonisolated struct SketchframePackage: Sendable {
         )
     }
 
+    /// A regular file is an archive (format v2); a directory is a folder
+    /// package (format v1), still read so older exports keep working.
     init(fileWrapper: FileWrapper) throws {
+        if fileWrapper.isRegularFile {
+            guard let data = fileWrapper.regularFileContents else { throw SketchframeError.missingDesign }
+            try self.init(archiveData: data)
+            return
+        }
         let files = fileWrapper.fileWrappers ?? [:]
         guard let designData = files[Self.designFileName]?.regularFileContents else {
             throw SketchframeError.missingDesign
@@ -213,6 +226,34 @@ nonisolated struct SketchframePackage: Sendable {
             previewData: files[Self.previewFileName(in: designData)]?.regularFileContents,
             annotationsData: files[SketchframeAnnotationsFile.fileName]?.regularFileContents
         )
+    }
+
+    init(archiveData: Data) throws {
+        let files = try SketchframeArchive.entries(in: archiveData)
+        guard let designData = files[Self.designFileName] else {
+            throw SketchframeError.missingDesign
+        }
+        try self.init(
+            designData: designData,
+            previewData: files[Self.previewFileName(in: designData)],
+            annotationsData: files[SketchframeAnnotationsFile.fileName]
+        )
+    }
+
+    /// The preview image of a Sketchframe on disk, in either form, for Quick
+    /// Look. Reads the archive once rather than once per file.
+    static func previewImageData(at url: URL) -> Data? {
+        if SketchframeArchive.isDirectory(url) {
+            let designData = try? Data(contentsOf: url.appending(path: designFileName))
+            let name = designData.map(previewFileName(in:)) ?? defaultPreviewFileName
+            return try? Data(contentsOf: url.appending(path: name))
+        }
+        guard
+            let data = try? Data(contentsOf: url),
+            let files = try? SketchframeArchive.entries(in: data)
+        else { return nil }
+        let name = files[designFileName].map(previewFileName(in:)) ?? defaultPreviewFileName
+        return files[name]
     }
 
     private init(designData: Data, previewData: Data?, annotationsData: Data?) throws {
