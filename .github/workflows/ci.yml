@@ -7,6 +7,12 @@ on:
     branches: [main]
   pull_request:
 
+# Nothing here writes anything: it builds, tests and uploads artifacts. Said
+# outright because `pull_request` runs this on forks, where the default token
+# permissions would otherwise apply.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
