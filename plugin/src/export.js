@@ -6,13 +6,14 @@ import { createContext } from "./context";
 import { walk, walkComponents } from "./walker";
 import { extractSharedStyles, buildOutline } from "./postprocess";
 // The manifest rather than package.json, which would bundle all of
-// package.json's fields into the plugin along with the version.
-import { version } from "./manifest.json";
+// package.json's fields into the plugin along with the version. A default
+// import: webpack 5 deprecates named imports from JSON modules.
+import manifest from "./manifest.json";
 
 // 2: the single-file archive. 1 was the folder package; the design is the same.
 export const FORMAT_VERSION = 2;
 /** scripts/bump-version.sh keeps the manifest in step with the release. */
-export const PLUGIN_VERSION = version;
+export const PLUGIN_VERSION = manifest.version;
 export const PREVIEW_FILE = "preview@2x.png";
 const PREVIEW_SCALE = 2;
 

@@ -322,7 +322,10 @@ private struct DetailsPane<Header: View>: View {
 
             switch mode {
             case .properties:
+                // A fresh view per selection, so nothing from the previous
+                // one (scroll position, measured rows) carries over.
                 PropertiesView(sections: sections)
+                    .id(sections)
             case .json:
                 ScrollView {
                     Text(isJSON ? JSONHighlighter.highlight(text) : AttributedString(text))
@@ -359,9 +362,13 @@ private struct PropertiesView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
+            // A plain VStack, not a LazyVStack: a node has at most a few dozen
+            // rows, and the lazy stack kept row sizes and views from the
+            // previous selection by position, so switching layers could leave
+            // later sections (borders, effects) cut off or missing (#8).
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(sections.enumerated()), id: \.element.title) { index, section in
                         if index > 0 { Divider().padding(.top, 6) }
                         Text(section.title.uppercased())
                             .font(.caption2.weight(.semibold))
