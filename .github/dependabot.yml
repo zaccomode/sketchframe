@@ -25,6 +25,37 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # @types/* describe a floor, not a target. packages/cli declares
+      # engines.node >=18 and CI runs 18/22/24, so these types track the
+      # oldest Node we support; a newer major would typecheck calls that
+      # fail there. Bump when the floor moves, not when DefinitelyTyped
+      # ships.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
+
+      # Pinned to engines.vscode (~1.100.0 against ^1.100.0) deliberately:
+      # vsce fails the build when the two diverge. Raising the floor drops
+      # users on older VS Code, so both fields move together, by hand.
+      # Minor and major ignored; patch still flows within 1.100.x.
+      - dependency-name: "@types/vscode"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
+
+      # skpm's Babel 7 transform-runtime emits the helper requires that
+      # resolve against this package, so its major is the builder's to set.
+      # CI builds the bundle but cannot load it in Sketch, so a green check
+      # proves nothing here. Unpin when @skpm/builder moves to Babel 8.
+      #
+      # Scoped to majors rather than ignoring the name outright: ignore
+      # conditions suppress security PRs too, and this one ships real code
+      # into the built plugin.
+      - dependency-name: "@babel/runtime"
+        update-types:
+          - version-update:semver-major
+
     # Almost everything here is a devDependency (typescript, esbuild,
     # @types/*), so ungrouped updates across four directories would be a
     # firehose. Majors stay out of the groups, each arriving as its own
