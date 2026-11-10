@@ -3,7 +3,7 @@
   "displayName": "Sketchframe",
   "description": "View and annotate .sketchframe design exports, and give agents tools to read them: the frame preview, its layer tree and design details",
   "preview": true,
-  "version": "0.5.1",
+  "version": "0.6.0",
   "publisher": "zaccomode",
   "license": "MIT",
   "type": "module",
