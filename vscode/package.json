@@ -402,5 +402,8 @@
     "esbuild": "^0.28.2",
     "jsonc-parser": "^3.3.1",
     "typescript": "^7.0.2"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }
