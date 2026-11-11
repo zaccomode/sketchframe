@@ -12,6 +12,47 @@ under one version:
   MCP server). Publishing the release also puts this file on npm.
 - `sketchframe-<version>.cjs`: the CLI and MCP server bundled into one file,
   for repositories that commit it rather than install it from npm.
+- `appcast.xml`: the app's Sparkle update feed, listing this version's zip
+  and its EdDSA signature.
+- `sketchframe-plugin.json`: the plugin's update feed, which Sketch reads.
+
+## Automatic Updates
+
+The app (through Sparkle) and the Sketch plugin (through Sketch's own plugin
+updates) both check a feed at a `releases/latest/download/` URL:
+
+- App: `SUFeedURL` in `mac/Sketchframe/Info.plist` →
+  `https://github.com/zaccomode/sketchframe/releases/latest/download/appcast.xml`
+- Plugin: `appcast` in `plugin/src/manifest.json` →
+  `https://github.com/zaccomode/sketchframe/releases/latest/download/sketchframe-plugin.json`
+
+GitHub resolves that URL to the newest **published, full** release. So a
+draft offers nothing, a pre-release offers nothing, and publishing a full
+release (or unticking "Set as a pre-release") offers the update to every
+installed copy. That is the same moment the extension reaches the Marketplace
+and the CLI reaches npm.
+
+Both feeds list only their release's version. Sparkle offers the update once
+a day, Sketch periodically, and both ask before installing. Copies installed
+before these feeds existed (0.6.1 and earlier) have no feed URL, so they
+update by hand once.
+
+Sparkle only installs an update whose zip is signed by the private key that
+matches the app's `SUPublicEDKey`. `release.yml` signs it with the
+`SPARKLE_ED_PRIVATE_KEY` secret, and fails if that key doesn't match the
+public key built into the app. Losing the private key means installed copies
+can never update automatically again, so keep a copy outside GitHub.
+
+A build without `SPARKLE_PUBLIC_ED_KEY` (on the Sketchframe target) has no
+updater at all, and `release.yml` refuses to release one.
+
+Moving to a newer Sparkle means updating the package in Xcode (which updates
+`Package.resolved`) and `SPARKLE_VERSION` and `SPARKLE_SHA256` at the top of
+`release.yml` together. `release.yml` checks they agree, because the
+`sign_update` it downloads from Sparkle's release should match the framework
+the app links. Get the hash with
+`shasum -a 256 Sparkle-<version>.tar.xz` on the file from
+[Sparkle's releases](https://github.com/sparkle-project/Sparkle/releases).
 
 ## Cutting a Release
 
@@ -38,7 +79,10 @@ under one version:
      open a Sketchframe with it.
    - Run `npx ./sketchframe-<version>.tgz outline Some.sketchframe` (or
      `node sketchframe-<version>.cjs …`) against an export.
-5. Publish the release in the GitHub UI. That starts
+   - Check that `appcast.xml` and `sketchframe-plugin.json` are attached and
+     name this version.
+5. Publish the release in the GitHub UI. This also offers the app and plugin
+   update to everyone who has them installed (see Automatic Updates). It starts
    `.github/workflows/publish-extension.yml`, which publishes the release's own
    `.vsix` to the VS Code Marketplace, and `.github/workflows/publish-npm.yml`,
    which publishes its `.tgz` to npm. A release published with **Set as a
@@ -76,7 +120,7 @@ Publish CLI to npm**.
 - **Deployment branches and tags:** "Selected branches and tags", with a single
   tag rule `v*`. This is what keeps the certificate, and the right to publish
   to the Marketplace, out of reach of a workflow run from any branch.
-- **Environment secrets:** the five below. They go on the environment, not on
+- **Environment secrets:** the six below. They go on the environment, not on
   the repository, where any workflow on any branch could read them.
 
 | Secret | What it is |
@@ -86,8 +130,28 @@ Publish CLI to npm**.
 | `APPLE_ID` | The Apple ID email of an account on the team, used for notarisation. |
 | `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for that Apple ID, from account.apple.com. |
 | `APPLE_TEAM_ID` | The team ID (`NAVFGLVP2P`). |
+| `SPARKLE_ED_PRIVATE_KEY` | The Sparkle EdDSA private key that signs app updates. See below. |
 
-These are the same values Arborist 2 uses, so they can be copied across.
+The Apple values are the same ones Arborist 2 uses, so they can be copied
+across. The Sparkle key is Sketchframe's own.
+
+### The Sparkle Signing Key
+
+Done once. The key never changes afterwards, because every installed copy
+trusts only the public key it was built with.
+
+1. Download `Sparkle-<version>.tar.xz` from
+   [Sparkle's releases](https://github.com/sparkle-project/Sparkle/releases),
+   at the version in `SPARKLE_VERSION` in `release.yml`, and unpack it.
+2. Run `./bin/generate_keys --account sketchframe`. It stores the private key
+   in your login keychain and prints the public key.
+3. Set `SPARKLE_PUBLIC_ED_KEY` to that public key on the **Sketchframe**
+   target, in both Debug and Release (**Build Settings → User-Defined**), and
+   commit it. It is public, and it is built into the app as `SUPublicEDKey`.
+4. Run `./bin/generate_keys --account sketchframe -x sparkle-private-key.txt`,
+   paste the file's contents into the `SPARKLE_ED_PRIVATE_KEY` secret, then
+   keep the file somewhere safe outside the repository (a password manager)
+   and delete the copy on disk.
 
 ### The VS Code Marketplace
 

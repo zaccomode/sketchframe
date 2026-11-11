@@ -4,6 +4,7 @@
   "description": "Export a frame as a .sketchframe package (PNG preview + JSON design tree) for AI agents",
   "version": "0.7.0",
   "identifier": "com.isaacshea.sketchframe",
+  "appcast": "https://github.com/zaccomode/sketchframe/releases/latest/download/sketchframe-plugin.json",
   "commands": [
     {
       "name": "Export Selected Frame…",
