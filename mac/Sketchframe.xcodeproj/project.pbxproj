@@ -12,6 +12,7 @@
 		AF6E72923099F204008D78F2 /* QuickLookThumbnailing.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF6E72913099F204008D78F2 /* QuickLookThumbnailing.framework */; };
 		AF6E72933099F204008D78F2 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF6E72793099F1F1008D78F2 /* Quartz.framework */; };
 		AF6E729A3099F204008D78F2 /* SketchframeThumbnail.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AF6E72903099F204008D78F2 /* SketchframeThumbnail.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AF6E72B23099F400008D78F2 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = AF6E72B13099F400008D78F2 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +72,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				Sketchframe.entitlements,
 			);
 			target = 000000000000000100000000 /* Sketchframe */;
 		};
@@ -112,6 +114,7 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
+				AF6E72B23099F400008D78F2 /* Sparkle in Frameworks */,
 			);
 		};
 		AF6E72743099F1F1008D78F2 /* Frameworks */ = {
@@ -184,6 +187,9 @@
 				AF6E72A03099F300008D78F2 /* Shared */,
 			);
 			name = Sketchframe;
+			packageProductDependencies = (
+				AF6E72B13099F400008D78F2 /* Sparkle */,
+			);
 			productName = MyApp;
 			productReference = 000000000000000000000120 /* Sketchframe.app */;
 			productType = "com.apple.product-type.application";
@@ -256,6 +262,9 @@
 			);
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AF6E72B03099F400008D78F2 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
 			projectDirPath = "";
@@ -456,6 +465,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = Sketchframe/Sketchframe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = NAVFGLVP2P;
@@ -497,6 +507,7 @@
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = auto;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -512,6 +523,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				AUTOMATION_APPLE_EVENTS = NO;
+				CODE_SIGN_ENTITLEMENTS = Sketchframe/Sketchframe.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = NAVFGLVP2P;
@@ -553,6 +565,7 @@
 				RUNTIME_EXCEPTION_DISABLE_EXECUTABLE_PAGE_PROTECTION = NO;
 				RUNTIME_EXCEPTION_DISABLE_LIBRARY_VALIDATION = NO;
 				SDKROOT = auto;
+				SPARKLE_PUBLIC_ED_KEY = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = macosx;
 				SUPPORTS_MACCATALYST = NO;
@@ -728,6 +741,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AF6E72B03099F400008D78F2 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AF6E72B13099F400008D78F2 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AF6E72B03099F400008D78F2 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 000000000000000000000000 /* Project object */;
 }

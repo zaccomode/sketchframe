@@ -26,6 +26,13 @@ on:
 permissions:
   contents: write
 
+env:
+  # The Sparkle release whose sign_update signs the app's update. It has to be
+  # the version the app links, which `verify` checks against Package.resolved,
+  # so moving Sparkle means changing both of these with it.
+  SPARKLE_VERSION: 2.10.1
+  SPARKLE_SHA256: 1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -64,6 +71,23 @@ jobs:
             echo "::error::Tag $tag, app $app, plugin $plugin (manifest $manifest)," \
                  "VS Code extension $extension and CLI $cli must all match. Run" \
                  "scripts/bump-version.sh, then re-tag."
+            exit 1
+          fi
+
+          # Without a public key the app ships with no updater at all (see
+          # AppUpdater.swift), and every copy of this release would have to be
+          # replaced by hand.
+          keys="$(grep -ho 'SPARKLE_PUBLIC_ED_KEY = [^;]*' mac/Sketchframe.xcodeproj/project.pbxproj | sort -u)"
+          if [ "$(printf '%s\n' "$keys" | wc -l)" -ne 1 ] || [ "$keys" = 'SPARKLE_PUBLIC_ED_KEY = ""' ]; then
+            echo "::error::SPARKLE_PUBLIC_ED_KEY must be set, and the same, in every" \
+                 "configuration of the Sketchframe target. See docs/release.md."
+            exit 1
+          fi
+          resolved="$(jq -r '.pins[] | select(.identity == "sparkle") | .state.version' \
+            mac/Sketchframe.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved)"
+          if [ "$resolved" != "$SPARKLE_VERSION" ]; then
+            echo "::error::The app links Sparkle $resolved but release.yml signs with" \
+                 "$SPARKLE_VERSION. Update SPARKLE_VERSION and SPARKLE_SHA256 together."
             exit 1
           fi
 
@@ -234,6 +258,101 @@ jobs:
           mkdir -p dist
           ditto -c -k --keepParent "$APP" "dist/Sketchframe-$VERSION.zip"
 
+      # appcast.xml is the feed SUFeedURL points at, through
+      # releases/latest/download/, so like the plugin's feed it goes live when
+      # the draft is published as a full release and not before. It lists only
+      # this version: Sparkle needs nothing older without delta updates.
+      #
+      # sign_update comes from Sparkle's own release at the version the app
+      # links (Package.resolved, which `verify` checked against these), and is
+      # checked against a pinned hash because it is handed the private key.
+      - name: Sign the update and write the Sparkle appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "::error::SPARKLE_ED_PRIVATE_KEY is not set on the 'release' environment. See docs/release.md."
+            exit 1
+          fi
+
+          tools="$RUNNER_TEMP/sparkle"
+          mkdir -p "$tools"
+          curl -fsSL -o "$tools/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $tools/sparkle.tar.xz" | shasum -a 256 -c -
+          tar -xJf "$tools/sparkle.tar.xz" -C "$tools"
+
+          key="$RUNNER_TEMP/sparkle-ed.key"
+          (umask 077 && printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key")
+
+          # A key that doesn't match the app's SUPublicEDKey signs updates that
+          # every installed copy rejects, and nothing else would notice. The
+          # exported key is either the 32-byte Ed25519 seed or, from older
+          # versions of generate_keys, 64 private bytes then the 32-byte public
+          # key, so derive or read the public key and compare. CryptoKit
+          # derives it because the runner's LibreSSL has no Ed25519.
+          case "$(base64 --decode < "$key" | wc -c | tr -d ' ')" in
+            32)
+              derived="$(KEY_FILE="$key" swift - <<'SWIFT'
+          import CryptoKit
+          import Foundation
+          let path = ProcessInfo.processInfo.environment["KEY_FILE"]!
+          let text = try! String(contentsOfFile: path, encoding: .utf8)
+          let seed = Data(base64Encoded: text.trimmingCharacters(in: .whitespacesAndNewlines))!
+          let key = try! Curve25519.Signing.PrivateKey(rawRepresentation: seed)
+          print(key.publicKey.rawRepresentation.base64EncodedString())
+          SWIFT
+              )"
+              ;;
+            96)
+              derived="$(base64 --decode < "$key" | tail -c 32 | base64)"
+              ;;
+            *)
+              rm -f "$key"
+              echo "::error::SPARKLE_ED_PRIVATE_KEY isn't a key exported by Sparkle's generate_keys -x."
+              exit 1
+              ;;
+          esac
+          expected="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+          if [ "$derived" != "$expected" ]; then
+            rm -f "$key"
+            echo "::error::SPARKLE_ED_PRIVATE_KEY does not match the app's SUPublicEDKey ($expected)." \
+                 "Updates signed with it would be rejected by every installed copy."
+            exit 1
+          fi
+
+          zip="dist/Sketchframe-$VERSION.zip"
+          attributes="$("$tools/bin/sign_update" --ed-key-file "$key" "$zip")"
+          rm -f "$key"
+          if ! grep -Eq '^sparkle:edSignature="[^"]+" length="[0-9]+"$' <<<"$attributes"; then
+            echo "::error::Unexpected output from sign_update: $attributes"
+            exit 1
+          fi
+
+          build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")"
+          minimum="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")"
+          release_url="https://github.com/$GITHUB_REPOSITORY/releases"
+          cat > dist/appcast.xml <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+            <channel>
+              <title>Sketchframe</title>
+              <item>
+                <title>Sketchframe $VERSION</title>
+                <pubDate>$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+                <sparkle:version>$build</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>$minimum</sparkle:minimumSystemVersion>
+                <sparkle:fullReleaseNotesLink>$release_url/tag/v$VERSION</sparkle:fullReleaseNotesLink>
+                <enclosure url="$release_url/download/v$VERSION/Sketchframe-$VERSION.zip" type="application/octet-stream" $attributes/>
+              </item>
+            </channel>
+          </rss>
+          EOF
+          xmllint --noout dist/appcast.xml
+          cat dist/appcast.xml
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -242,13 +361,29 @@ jobs:
 
       # --ignore-scripts: postinstall runs skpm-link, which tries to install
       # the plugin into Sketch on the runner.
+      #
+      # sketchframe-plugin.json is the update feed the manifest's `appcast`
+      # points at, through releases/latest/download/. That URL only resolves
+      # to published, non-pre-release releases, so Sketch offers this version
+      # once the draft is published as a full release, the same moment the
+      # extension reaches the Marketplace, and never before.
       - name: Build and package the Sketch plugin
         working-directory: plugin
         run: |
           set -euo pipefail
           npm ci --ignore-scripts
           npm run build
-          ditto -c -k --keepParent sketchframe.sketchplugin "../dist/sketchframe-$VERSION.sketchplugin.zip"
+          zip="../dist/sketchframe-$VERSION.sketchplugin.zip"
+          ditto -c -k --keepParent sketchframe.sketchplugin "$zip"
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/sketchframe-$VERSION.sketchplugin.zip" \
+            --argjson size "$(stat -f%z "$zip")" \
+            --arg date "$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')" \
+            '{itemName: "Sketchframe", versionID: $version, downloadURL: $url, downloadFileSize: $size, creationDate: $date}' \
+            > ../dist/sketchframe-plugin.json
+          cat ../dist/sketchframe-plugin.json
 
       # Node 24 for the extension: its tests run the TypeScript sources
       # directly, which needs Node's built-in type stripping.
