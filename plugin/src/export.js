@@ -1,6 +1,4 @@
 import sketch from "sketch";
-import { Style } from "sketch/dom";
-import { enumKey } from "./utils/enums";
 import { round } from "./utils/math";
 import { createContext } from "./context";
 import { walk, walkComponents } from "./walker";
@@ -35,7 +33,7 @@ export function exportFrame(layer) {
   });
   if (Array.isArray(preview)) preview = preview[0];
   const previewSize = pngSize(preview);
-  const origin = frameOriginInPreview(layer, previewSize);
+  const origin = frameOriginInPreview(root, previewSize);
 
   const design = {
     format: "sketchframe",
@@ -60,42 +58,65 @@ export function exportFrame(layer) {
   return { design, preview, assets: ctx.assets.files };
 }
 
-// Sketch renders shadows and outside borders beyond the layer's bounds, so the
+// Sketch renders shadows and outside/centre borders beyond a layer's bounds,
+// including those of descendants (even inside a clipping frame), so the
 // preview can be larger than the frame. Returns where the frame's top-left
-// sits inside the preview, in points. If the measured overflow doesn't match
-// the preview (e.g. unclipped children also overflow), the difference is
-// assumed to be split evenly.
-function frameOriginInPreview(layer, previewSize) {
+// sits inside the preview, in points. The bounds are rounded outwards to
+// whole points, as Sketch does. If they don't match the preview (e.g. rotated
+// layers, which aren't measured), the difference is assumed to be split evenly.
+function frameOriginInPreview(root, previewSize) {
   if (!previewSize) return undefined;
-  const style = layer.style || {};
-  const outset = { left: 0, top: 0, right: 0, bottom: 0 };
-  const extend = (left, top, right, bottom) => {
-    outset.left = Math.max(outset.left, left);
-    outset.top = Math.max(outset.top, top);
-    outset.right = Math.max(outset.right, right);
-    outset.bottom = Math.max(outset.bottom, bottom);
+  const bounds = renderedBounds(root);
+  const left = Math.floor(bounds.left);
+  const top = Math.floor(bounds.top);
+  const width = Math.ceil(bounds.right) - left;
+  const height = Math.ceil(bounds.bottom) - top;
+
+  const previewWidth = previewSize.width / PREVIEW_SCALE;
+  const previewHeight = previewSize.height / PREVIEW_SCALE;
+  const x = Math.abs(width - previewWidth) <= 1 ? -left : (previewWidth - root.width) / 2;
+  const y = Math.abs(height - previewHeight) <= 1 ? -top : (previewHeight - root.height) / 2;
+  return { x: round(x), y: round(y) };
+}
+
+// The area the root and its descendants draw into, in the root's coordinates:
+// each node's frame, grown by its outer shadows and its outside/centre borders.
+// Reads the walked design tree, where x/y are relative to the parent.
+function renderedBounds(root) {
+  const bounds = { left: 0, top: 0, right: root.width, bottom: root.height };
+  const include = (left, top, right, bottom) => {
+    bounds.left = Math.min(bounds.left, left);
+    bounds.top = Math.min(bounds.top, top);
+    bounds.right = Math.max(bounds.right, right);
+    bounds.bottom = Math.max(bounds.bottom, bottom);
   };
 
-  (style.shadows || [])
-    .filter((shadow) => shadow.enabled !== false)
-    .forEach((shadow) => {
-      const reach = (shadow.blur || 0) + (shadow.spread || 0);
-      extend(reach - shadow.x, reach - shadow.y, reach + shadow.x, reach + shadow.y);
-    });
-  (style.borders || [])
-    .filter((border) => border.enabled !== false)
-    .forEach((border) => {
-      const position = enumKey(Style.BorderPosition, border.position);
+  const visit = (node, parentX, parentY) => {
+    const x = parentX + (node === root ? 0 : node.x || 0);
+    const y = parentY + (node === root ? 0 : node.y || 0);
+    const right = x + (node.width || 0);
+    const bottom = y + (node.height || 0);
+
+    const shadows = (node.effects && node.effects.shadows) || [];
+    shadows
+      .filter((shadow) => !shadow.inset)
+      .forEach((shadow) => {
+        const reach = (shadow.blur || 0) + (shadow.spread || 0);
+        const dx = shadow.x || 0;
+        const dy = shadow.y || 0;
+        include(x + dx - reach, y + dy - reach, right + dx + reach, bottom + dy + reach);
+      });
+    (Array.isArray(node.borders) ? node.borders : []).forEach((border) => {
+      const thickness = border.thickness || 0;
       const reach =
-        position === "Outside" ? border.thickness : position === "Center" ? border.thickness / 2 : 0;
-      extend(reach, reach, reach, reach);
+        border.position === "outside" ? thickness : border.position === "center" ? thickness / 2 : 0;
+      include(x - reach, y - reach, right + reach, bottom + reach);
     });
 
-  const extraWidth = previewSize.width / PREVIEW_SCALE - layer.frame.width;
-  const extraHeight = previewSize.height / PREVIEW_SCALE - layer.frame.height;
-  const x = Math.abs(outset.left + outset.right - extraWidth) <= 1 ? outset.left : extraWidth / 2;
-  const y = Math.abs(outset.top + outset.bottom - extraHeight) <= 1 ? outset.top : extraHeight / 2;
-  return { x: round(x), y: round(y) };
+    (node.children || []).forEach((child) => visit(child, x, y));
+  };
+  visit(root, 0, 0);
+  return bounds;
 }
 
 // Width and height live at bytes 16..23 of the PNG IHDR chunk.
