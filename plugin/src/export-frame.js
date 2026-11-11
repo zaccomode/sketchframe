@@ -28,7 +28,7 @@ export default function () {
     }
     const result = exportFrame(layer);
     writePackage(destination, result);
-    sketch.UI.message(`Exported “${layer.name}”`);
+    sketch.UI.message(`Exported “${layer.name}”${missingNote(result.design.missingAssets)}`);
     NSWorkspace.sharedWorkspace().activateFileViewerSelectingURLs([
       NSURL.fileURLWithPath(destination),
     ]);
@@ -36,6 +36,15 @@ export default function () {
     console.error(e);
     sketch.UI.alert("Sketchframe export failed", String((e && e.stack) || e));
   }
+}
+
+// " (2 vectors couldn't be exported: Icon/Close, Logo)", or "" if none were missed.
+function missingNote(missing) {
+  if (!missing || !missing.length) return "";
+  const count = missing.length === 1 ? "1 vector couldn't" : `${missing.length} vectors couldn't`;
+  const names = missing.slice(0, 3).map((asset) => asset.name);
+  if (missing.length > 3) names.push("…");
+  return ` (${count} be exported: ${names.join(", ")})`;
 }
 
 function chooseDestination(name) {

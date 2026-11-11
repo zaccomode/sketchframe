@@ -83,6 +83,7 @@ from `version`.
 | `tokens.colors` | The swatches (color variables) the frame uses: name → CSS color. Nodes refer to them through `token` / `colorToken`. |
 | `styles` | Style values that two or more nodes share. A node field that holds a **string** instead of an object or array is a key into this map. |
 | `components` | The symbols the frame uses, keyed by Sketch symbol ID: `{ name, library?, root }`. `root` is the symbol master as a Node tree in its own coordinate space. Nested symbols are included. |
+| `missingAssets` | Only present when some vectors couldn't be exported as SVG: `[{ id, name }]`, one per `vector` node that has no `src`. Rebuild those from the preview, or ask for the asset. |
 | `root` | The exported layer. |
 
 ## Node
@@ -115,7 +116,7 @@ Fields are omitted when they hold the default value.
 | `clipContent` | `true` if children are clipped to the bounds. |
 | `component`, `componentId` | For `instance`: the symbol's name, and its key in `components`. The instance's own style fields are the symbol's, with overrides applied, and its `children` are the symbol's resolved layers. |
 | `overrides` | For `instance`: the overrides that differ from the symbol, as `[{ layer, property, value }]` (e.g. `{ "layer": "Cube1", "property": "color:fill-0", "value": "#00ff3c" }`). |
-| `src` | For `image` and `vector`: an asset path. |
+| `src` | For `image` and `vector`: an asset path. A `vector` without one is listed in `missingAssets`. |
 | `children` | Node[]. Painted back to front (DOM order). Inside a stack, in-flow children come first, in main-axis order. |
 
 ### Text nodes

@@ -111,6 +111,7 @@ A .sketchframe is a zip archive. With the sketchframe tools
   each with a category (development, interaction, accessibility, content).
   \`nodeId\` / \`sketchId\` point at nodes in \`${DESIGN_FILE}\`. Follow these notes.
 - \`assets/\` — images and SVGs referenced by \`src\` fields in \`${DESIGN_FILE}\`.
+  Vectors Sketch couldn't export have no \`src\` and are listed in \`missingAssets\`.
 
 Format: https://github.com/zaccomode/sketchframe/blob/main/docs/FORMAT.md
 `;
