@@ -53,14 +53,46 @@ function createAssetStore() {
 
     // Vector layers and icon groups are rendered by Sketch as SVG.
     addSvg(layer) {
-      let data = sketch.export(layer, { formats: ["svg"], output: false });
-      if (Array.isArray(data)) data = data[0];
-      const svg = String(data);
+      const svg = exportSvg(layer);
+      if (svg == null) return undefined;
       const path = `assets/vec_${hash(svg)}.svg`;
       if (!files[path]) files[path] = svg;
       return path;
     },
   };
+}
+
+// Layers from an instance's expandedLayers (e.g. a nested component inside the
+// exported one) aren't attached to a page, and sketch.export needs a page to
+// find the document. Those are exported from a copy placed in a temporary group
+// on the current page, which is removed again straight after.
+function exportSvg(layer) {
+  const run = (target) => {
+    let data = sketch.export(target, { formats: ["svg"], output: false });
+    if (Array.isArray(data)) data = data[0];
+    return String(data);
+  };
+
+  try {
+    return run(layer);
+  } catch (e) {
+    // Not on a page; fall through to the temporary copy.
+  }
+
+  const document = sketch.getSelectedDocument();
+  const page = document && document.selectedPage;
+  if (!page) return undefined;
+
+  let tmp;
+  try {
+    const copy = sketch.fromNative(layer.sketchObject.copy());
+    tmp = new sketch.Group({ name: "sketchframe-tmp", parent: page, layers: [copy] });
+    return run(tmp.layers[0]);
+  } catch (e) {
+    return undefined;
+  } finally {
+    if (tmp) tmp.remove();
+  }
 }
 
 function imageExtension(base64) {
