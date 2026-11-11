@@ -190,6 +190,14 @@ function beginUntrackedChanges(document) {
 
   return {
     end() {
+      // Sketch 2026.2+ batches layer changes and marks the document as edited
+      // when it processes them, so they're flushed first: while undo
+      // registration is still off, and before the edited state is restored.
+      try {
+        if (typeof document.processPendingChanges === "function") document.processPendingChanges();
+      } catch (e) {
+        console.error("sketchframe: couldn't process pending changes", e);
+      }
       try {
         if (undoManager) undoManager.enableUndoRegistration();
       } catch (e) {
