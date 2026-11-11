@@ -18,11 +18,19 @@ const PREVIEW_SCALE = 2;
 // Builds everything that goes into a .sketchframe for one layer.
 export function exportFrame(layer) {
   const ctx = createContext(layer);
-  const root = walk(layer, ctx, null);
-  // Measured before extractSharedStyles, which replaces shared shadows and
-  // borders on the nodes with style keys.
-  const bounds = renderedBounds(root);
-  const components = walkComponents(ctx);
+  let root;
+  let bounds;
+  let components;
+  try {
+    root = walk(layer, ctx, null);
+    // Measured before extractSharedStyles, which replaces shared shadows and
+    // borders on the nodes with style keys.
+    bounds = renderedBounds(root);
+    components = walkComponents(ctx);
+  } finally {
+    // Removes the scratch group (if any) before the preview is rendered.
+    ctx.assets.dispose();
+  }
   const componentRoots = Object.keys(components)
     .map((key) => components[key].root)
     .filter(Boolean);
@@ -55,6 +63,7 @@ export function exportFrame(layer) {
     tokens: Object.keys(ctx.colorTokens).length ? { colors: ctx.colorTokens } : undefined,
     styles,
     components: Object.keys(components).length ? components : undefined,
+    missingAssets: ctx.missingAssets.length ? ctx.missingAssets : undefined,
     root,
   };
 
@@ -109,6 +118,9 @@ function renderedBounds(root) {
         const dy = shadow.y || 0;
         include(x + dx - reach, y + dy - reach, right + dx + reach, bottom + dy + reach);
       });
+    // Treats every border as uniform: per-side thicknesses aren't read. A
+    // mismatch with the preview only means frameOriginInPreview falls back to
+    // an even split.
     (Array.isArray(node.borders) ? node.borders : []).forEach((border) => {
       const thickness = border.thickness || 0;
       const reach =

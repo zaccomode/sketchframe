@@ -61,7 +61,10 @@ export function walk(layer, ctx, parent) {
 
   if (type === "text") Object.assign(node, convertText(layer, ctx));
   if (type === "image") node.src = ctx.assets.addImageData(layer.image);
-  if (type === "vector") node.src = ctx.assets.addSvg(layer);
+  if (type === "vector") {
+    node.src = ctx.assets.addSvg(layer);
+    if (!node.src) ctx.missingAssets.push({ id: node.id, name: node.name });
+  }
   if (type === "instance" && layer.master) {
     node.component = layer.master.name;
     node.componentId = registerComponent(layer.master, ctx);
