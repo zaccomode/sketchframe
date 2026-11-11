@@ -19,6 +19,9 @@ const PREVIEW_SCALE = 2;
 export function exportFrame(layer) {
   const ctx = createContext(layer);
   const root = walk(layer, ctx, null);
+  // Measured before extractSharedStyles, which replaces shared shadows and
+  // borders on the nodes with style keys.
+  const bounds = renderedBounds(root);
   const components = walkComponents(ctx);
   const componentRoots = Object.keys(components)
     .map((key) => components[key].root)
@@ -33,7 +36,7 @@ export function exportFrame(layer) {
   });
   if (Array.isArray(preview)) preview = preview[0];
   const previewSize = pngSize(preview);
-  const origin = frameOriginInPreview(root, previewSize);
+  const origin = frameOriginInPreview(root, bounds, previewSize);
 
   const design = {
     format: "sketchframe",
@@ -64,9 +67,8 @@ export function exportFrame(layer) {
 // sits inside the preview, in points. The bounds are rounded outwards to
 // whole points, as Sketch does. If they don't match the preview (e.g. rotated
 // layers, which aren't measured), the difference is assumed to be split evenly.
-function frameOriginInPreview(root, previewSize) {
+function frameOriginInPreview(root, bounds, previewSize) {
   if (!previewSize) return undefined;
-  const bounds = renderedBounds(root);
   const left = Math.floor(bounds.left);
   const top = Math.floor(bounds.top);
   const width = Math.ceil(bounds.right) - left;
@@ -81,7 +83,8 @@ function frameOriginInPreview(root, previewSize) {
 
 // The area the root and its descendants draw into, in the root's coordinates:
 // each node's frame, grown by its outer shadows and its outside/centre borders.
-// Reads the walked design tree, where x/y are relative to the parent.
+// Reads the walked design tree, where x/y are relative to the parent, so it
+// must run before shared styles are extracted.
 function renderedBounds(root) {
   const bounds = { left: 0, top: 0, right: root.width, bottom: root.height };
   const include = (left, top, right, bottom) => {
