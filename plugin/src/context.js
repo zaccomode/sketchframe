@@ -81,7 +81,8 @@ function exportSvgData(layer) {
 // Layers from an instance's expandedLayers (e.g. a nested component inside the
 // exported one) aren't attached to a page, and sketch.export needs a page to
 // find the document. Those are exported from a copy placed in the export's
-// scratch group on the current page, and the copy is removed straight after.
+// scratch group on the current page. Copies stay there until the export ends
+// and the whole group is removed.
 function exportSvg(layer, scratch) {
   let directError;
   try {
@@ -91,11 +92,9 @@ function exportSvg(layer, scratch) {
     directError = e;
   }
 
-  let copy;
   try {
-    copy = sketch.fromNative(layer.sketchObject.copy());
+    const copy = sketch.fromNative(layer.sketchObject.copy());
     if (!scratch.add(copy)) {
-      copy = undefined;
       console.error(`sketchframe: couldn't export vector “${layer.name}” as SVG (no page)`, directError);
       return undefined;
     }
@@ -103,28 +102,28 @@ function exportSvg(layer, scratch) {
   } catch (e) {
     console.error(`sketchframe: couldn't export vector “${layer.name}” as SVG`, directError, e);
     return undefined;
-  } finally {
-    if (copy) removeQuietly(copy);
-  }
-}
-
-// The API wrapper's `parent` getter throws for a layer that isn't in a group,
-// so attachment is checked on the native layer instead.
-function isAttached(layer) {
-  try {
-    return Boolean(layer && layer.sketchObject.parentGroup());
-  } catch (e) {
-    return false;
   }
 }
 
 // Cleanup runs in `finally` blocks, where a throw would replace the export's
-// result (or its real error), so failures here are only logged.
+// result (or its real error), so failures here are only logged. remove() is
+// called unconditionally: asking a layer for its parent (the wrapper's
+// `parent`, or the native `parentGroup()`) isn't reliable here.
 function removeQuietly(layer) {
   try {
-    if (isAttached(layer)) layer.remove();
+    layer.remove();
   } catch (e) {
     console.error("sketchframe: couldn't remove a temporary layer", e);
+  }
+}
+
+// Removes every scratch group on `page`, including any left behind by an
+// export that was interrupted (crash, force-quit).
+function sweep(page) {
+  try {
+    page.layers.filter((layer) => layer.name === SCRATCH_NAME).forEach(removeQuietly);
+  } catch (e) {
+    console.error("sketchframe: couldn't look for temporary groups", e);
   }
 }
 
@@ -139,17 +138,23 @@ const NSChangeCleared = 2;
 // stack, and ⌘Z after an export still undoes the user's last edit), and if the
 // document had no unsaved changes beforehand it is marked clean again once the
 // group is removed. Created only when first needed: most exports never use it.
+//
+// The group's state is tracked here rather than read back from Sketch, and
+// disposing sweeps the page for the group by name as well, so nothing is left
+// behind even if a reference to the group goes stale.
 function createScratch() {
+  let page;
   let group;
   let session;
 
   const open = (layer) => {
     const document = sketch.getSelectedDocument();
-    const page = document && document.selectedPage;
+    page = document && document.selectedPage;
     if (!page) return false;
-    if (!session) session = beginUntrackedChanges(document);
-    // A group left behind by an export that was interrupted (crash, force-quit).
-    page.layers.filter((stray) => stray.name === SCRATCH_NAME).forEach(removeQuietly);
+    if (!session) {
+      session = beginUntrackedChanges(document);
+      sweep(page);
+    }
     group = new sketch.Group({ name: SCRATCH_NAME, parent: page, layers: [layer] });
     return true;
   };
@@ -157,14 +162,22 @@ function createScratch() {
   return {
     // Puts `layer` into the scratch group. Returns false if there is no page.
     add(layer) {
-      // Sketch may discard a group once it's empty, so it's recreated if so.
-      if (!isAttached(group)) return open(layer);
-      layer.parent = group;
-      return true;
+      if (group) {
+        try {
+          layer.parent = group;
+          return true;
+        } catch (e) {
+          // Fall back to a new group; both are removed by dispose().
+          console.error("sketchframe: couldn't reuse the temporary group", e);
+        }
+      }
+      return open(layer);
     },
 
     dispose() {
       if (group) removeQuietly(group);
+      if (page) sweep(page);
+      page = undefined;
       group = undefined;
       if (session) session.end();
       session = undefined;
