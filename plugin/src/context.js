@@ -216,13 +216,45 @@ function beginUntrackedChanges(document) {
       } catch (e) {
         console.error("sketchframe: couldn't resume undo registration", e);
       }
+      if (wasEdited) return;
+      markClean(native);
+      // Removing the scratch group marks the document as edited a moment
+      // later, after this has run (processing pending changes doesn't catch
+      // it), so it's marked clean again once Sketch has handled the removal.
+      // A plugin command's script is torn down when it returns unless asked to
+      // stay around, so it's kept alive until the last check.
       try {
-        if (!wasEdited && native.isDocumentEdited()) native.updateChangeCount(NSChangeCleared);
+        if (typeof setTimeout !== "function") return;
+        const keepAround = (alive) => {
+          if (typeof coscript !== "undefined" && coscript.setShouldKeepAround) {
+            coscript.setShouldKeepAround(alive);
+          }
+        };
+        keepAround(true);
+        CLEAN_AGAIN_AFTER_MS.forEach((delay, index) => {
+          setTimeout(() => {
+            markClean(native);
+            if (index === CLEAN_AGAIN_AFTER_MS.length - 1) keepAround(false);
+          }, delay);
+        });
       } catch (e) {
-        console.error("sketchframe: couldn't restore the document's edited state", e);
+        console.error("sketchframe: couldn't schedule restoring the document's edited state", e);
       }
     },
   };
+}
+
+// After the next turn of the run loop, and once more shortly after in case
+// Sketch defers its processing further. The user is looking at the exported
+// file in Finder by then, so this won't hide an edit of theirs.
+const CLEAN_AGAIN_AFTER_MS = [0, 250];
+
+function markClean(native) {
+  try {
+    if (native.isDocumentEdited()) native.updateChangeCount(NSChangeCleared);
+  } catch (e) {
+    console.error("sketchframe: couldn't restore the document's edited state", e);
+  }
 }
 
 function imageExtension(base64) {
