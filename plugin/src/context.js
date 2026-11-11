@@ -95,6 +95,7 @@ function exportSvg(layer, scratch) {
   try {
     copy = sketch.fromNative(layer.sketchObject.copy());
     if (!scratch.add(copy)) {
+      copy = undefined;
       console.error(`sketchframe: couldn't export vector “${layer.name}” as SVG (no page)`, directError);
       return undefined;
     }
@@ -103,7 +104,27 @@ function exportSvg(layer, scratch) {
     console.error(`sketchframe: couldn't export vector “${layer.name}” as SVG`, directError, e);
     return undefined;
   } finally {
-    if (copy && copy.parent) copy.remove();
+    if (copy) removeQuietly(copy);
+  }
+}
+
+// The API wrapper's `parent` getter throws for a layer that isn't in a group,
+// so attachment is checked on the native layer instead.
+function isAttached(layer) {
+  try {
+    return Boolean(layer && layer.sketchObject.parentGroup());
+  } catch (e) {
+    return false;
+  }
+}
+
+// Cleanup runs in `finally` blocks, where a throw would replace the export's
+// result (or its real error), so failures here are only logged.
+function removeQuietly(layer) {
+  try {
+    if (isAttached(layer)) layer.remove();
+  } catch (e) {
+    console.error("sketchframe: couldn't remove a temporary layer", e);
   }
 }
 
@@ -128,9 +149,7 @@ function createScratch() {
     if (!page) return false;
     if (!session) session = beginUntrackedChanges(document);
     // A group left behind by an export that was interrupted (crash, force-quit).
-    page.layers
-      .filter((stray) => stray.name === SCRATCH_NAME)
-      .forEach((stray) => stray.remove());
+    page.layers.filter((stray) => stray.name === SCRATCH_NAME).forEach(removeQuietly);
     group = new sketch.Group({ name: SCRATCH_NAME, parent: page, layers: [layer] });
     return true;
   };
@@ -139,19 +158,16 @@ function createScratch() {
     // Puts `layer` into the scratch group. Returns false if there is no page.
     add(layer) {
       // Sketch may discard a group once it's empty, so it's recreated if so.
-      if (!group || !group.parent) return open(layer);
+      if (!isAttached(group)) return open(layer);
       layer.parent = group;
       return true;
     },
 
     dispose() {
-      try {
-        if (group && group.parent) group.remove();
-      } finally {
-        group = undefined;
-        if (session) session.end();
-        session = undefined;
-      }
+      if (group) removeQuietly(group);
+      group = undefined;
+      if (session) session.end();
+      session = undefined;
     },
   };
 }
