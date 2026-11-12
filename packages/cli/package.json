@@ -1,6 +1,6 @@
 {
   "name": "sketchframe",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Read .sketchframe design files from the command line or an MCP server: outlines, layer details, screenshots, tokens and annotations for AI agents",
   "keywords": [
     "sketch",
