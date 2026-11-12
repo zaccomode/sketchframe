@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -42,6 +42,26 @@ test('packs, outlines and crops', () => {
     assert.ok(existsSync(out));
     assert.match(capture(['cat', archive]).output, /## annotations\.json/);
     assert.match(capture(['list', dir]).output, /nested\/Cards\.sketchframe/);
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
+});
+
+test('outline, node and code report a vector the exporter missed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sketchframe-cli-'));
+  try {
+    const folder = join(dir, 'Missing.sketchframe');
+    cpSync(fixture, folder, { recursive: true });
+    const designPath = join(folder, 'design.json');
+    const design = JSON.parse(readFileSync(designPath, 'utf8'));
+    design.root.children.push({ id: 'n9', name: 'Logo', type: 'vector', x: 176, y: 8, width: 16, height: 16 });
+    design.missingAssets = [{ id: 'n9', name: 'Logo' }];
+    writeFileSync(designPath, JSON.stringify(design));
+
+    assert.match(capture(['outline', folder]).output, /1 vector couldn't be exported \(Logo \(n9\)\)/);
+    assert.match(capture(['outline', folder]).output, /Logo \[vector\].* n9  ⚠ asset missing/);
+    assert.match(capture(['node', folder, 'Logo']).output, /"missingAssets"/);
+    assert.match(capture(['code', folder, 'Logo']).output, /vector "Logo" \(n9\) couldn't be exported/);
   } finally {
     rmSync(dir, { recursive: true });
   }

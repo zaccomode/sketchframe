@@ -1,7 +1,7 @@
 {
   "name": "sketchframe",
   "description": "Export a Sketch frame as a .sketchframe package: a PNG preview plus a full JSON design tree for AI agents",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "engines": {
     "sketch": ">=2025.2"
   },

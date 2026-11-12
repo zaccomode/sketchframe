@@ -88,3 +88,7 @@ the frame's children down (`Header/Title`), or a unique layer name.
 - Image and vector layers have `src` paths to files inside the archive
   (`assets/…`); extract them with `sketchframe extract` if you need the
   originals.
+- A vector the exporter couldn't turn into SVG has no `src`. The outline
+  header names it, its line is marked `⚠ asset missing`, `get_node` lists it
+  under `missingAssets`, and `get_code` leaves a commented placeholder. Rebuild
+  it from the screenshot or ask for the asset; don't leave the box empty.

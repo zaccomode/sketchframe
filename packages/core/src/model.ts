@@ -35,6 +35,9 @@ export type Node = {
 
 export type Component = { id: string; name: string; library?: string; root: Node };
 
+/** A `vector` the exporter couldn't turn into SVG, so it has no `src`. */
+export type MissingAsset = { id: string; name: string };
+
 export type Rect = { x: number; y: number; width: number; height: number };
 
 export type Sketchframe = {
@@ -47,6 +50,8 @@ export type Sketchframe = {
   /** Color tokens: name → CSS color. */
   colors: Record<string, string>;
   annotations: SketchframeAnnotation[];
+  /** design.json's `missingAssets`; empty for exports that have none, or predate the field. */
+  missingAssets: MissingAsset[];
   preview: { src: string; scale: number; pixelWidth: number; pixelHeight: number };
   /** Where the root frame's top-left sits inside the preview, in points. */
   frameOrigin: Point;
@@ -85,6 +90,10 @@ export function loadSketchframe(files: SketchframeFiles): Sketchframe {
     ),
   );
 
+  const missingAssets = (Array.isArray(design.missingAssets) ? design.missingAssets : []).flatMap((value): MissingAsset[] =>
+    isObject(value) && typeof value.id === 'string' ? [{ id: value.id, name: string(value.name) ?? '' }] : [],
+  );
+
   const previewObject = isObject(design.preview) ? design.preview : {};
   const previewScale = number(previewObject.scale) ?? 2;
   const preview = {
@@ -102,6 +111,7 @@ export function loadSketchframe(files: SketchframeFiles): Sketchframe {
     styles,
     colors,
     annotations: parseAnnotations(text(files, ANNOTATIONS_FILE)),
+    missingAssets,
     preview,
     frameOrigin: frameOrigin(previewObject, design.root, styles, {
       width: preview.pixelWidth / previewScale - root.size.width,
@@ -206,6 +216,11 @@ export function requireNode(frame: Sketchframe, query: string): Node {
 /** The frame layer an annotation belongs to, or `undefined` if it's gone. */
 export function nodeForAnnotation(frame: Sketchframe, annotation: SketchframeAnnotation): Node | undefined {
   return annotatedNode(allNodes(frame.root), annotation);
+}
+
+/** True if the exporter recorded this node's asset as missing (see `missingAssets`). */
+export function isMissingAsset(frame: Sketchframe, node: Node): boolean {
+  return node.raw.src === undefined && frame.missingAssets.some((asset) => asset.id === node.id);
 }
 
 /** Top-left, top-right, bottom-right, bottom-left in the root's space. */
