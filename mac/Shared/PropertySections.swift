@@ -136,10 +136,10 @@ nonisolated enum PropertySections {
     private static func appearanceRows(_ node: Object) -> [PropertyRow?] {
         let corners = node["corners"] as? Object
         var radius: String?
-        if let value = number(corners?["radius"]) {
-            radius = px(value)
+        if corners?["radius"] is NSNumber {
+            radius = cornerRadius(corners?["radius"])
         } else if let list = corners?["radius"] as? [Any] {
-            radius = list.map { px($0) ?? "0" }.joined(separator: " ")
+            radius = list.map { cornerRadius($0) ?? "0" }.joined(separator: " ")
         }
         let style = string(corners?["style"])
         return [
@@ -374,9 +374,16 @@ nonisolated enum PropertySections {
         return number.boolValue
     }
 
-    /// Up to two decimal places, without trailing zeros.
+    /// Beyond this, a number is a sentinel rather than a measurement, and
+    /// would be past the 2^53 where doubles stop being exact integers anyway.
+    private static let largestPlainNumber = 1e15
+
+    /// Up to two decimal places, without trailing zeros. Numbers too large
+    /// for that, or not finite, are written as Swift describes them, because
+    /// `Int(_:)` traps on anything outside its range.
     static func decimal(_ value: Double) -> String {
         let rounded = (value * 100).rounded() / 100
+        guard rounded.isFinite, abs(rounded) < largestPlainNumber else { return "\(value)" }
         if rounded == rounded.rounded() { return String(Int(rounded)) }
         var text = String(format: "%.2f", rounded)
         while text.hasSuffix("0") { text.removeLast() }
@@ -385,6 +392,15 @@ nonisolated enum PropertySections {
 
     private static func px(_ value: Any?) -> String? {
         number(value).map { "\(decimal($0))px" }
+    }
+
+    /// Sketch saves a fully rounded corner as the largest 32-bit float
+    /// (3.4e38), so any radius past `fullRadius` reads as "Full".
+    static let fullRadius = 1e6
+
+    private static func cornerRadius(_ value: Any?) -> String? {
+        guard let radius = number(value) else { return nil }
+        return radius >= fullRadius ? "Full" : px(radius)
     }
 
     private static func sizeText(
