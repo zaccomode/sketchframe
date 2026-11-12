@@ -126,7 +126,11 @@ function appearanceRows(node: JSONObject): (PropertyRow | undefined)[] {
   const corners = obj(node.corners);
   const radius = corners?.radius;
   const radiusText =
-    typeof radius === 'number' ? px(radius) : Array.isArray(radius) ? radius.map((r) => px(r) ?? '0').join(' ') : undefined;
+    typeof radius === 'number'
+      ? cornerRadius(radius)
+      : Array.isArray(radius)
+        ? radius.map((r) => cornerRadius(r) ?? '0').join(' ')
+        : undefined;
   const style = str(corners?.style);
   return [
     row('Opacity', typeof node.opacity === 'number' ? `${num(node.opacity * 100)}%` : undefined),
@@ -343,6 +347,15 @@ export function num(value: number): string {
 
 function px(value: unknown): string | undefined {
   return typeof value === 'number' ? `${num(value)}px` : undefined;
+}
+
+/** Sketch saves a fully rounded corner as the largest 32-bit float (3.4e38),
+ * so any radius past this reads as "Full". Matches PropertySections.swift. */
+const fullRadius = 1e6;
+
+function cornerRadius(value: unknown): string | undefined {
+  if (typeof value !== 'number') return undefined;
+  return value >= fullRadius ? 'Full' : px(value);
 }
 
 function sizeText(value: unknown, format: (n: number) => string = (n) => `${num(n)}px`): string | undefined {

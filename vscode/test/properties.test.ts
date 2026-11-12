@@ -11,6 +11,15 @@ const section = (sections: PropertySection[], title: string) => {
 const value = (sections: PropertySection[], title: string, label: string) =>
   section(sections, title).rows.find((row) => row.label === label)?.value;
 
+test('shows a fully rounded corner, saved as the largest float, as Full', () => {
+  const full = 3.402823466385289e38;
+  assert.equal(value(nodeSections({ corners: { radius: full } }), 'Appearance', 'Corner radius'), 'Full');
+  assert.equal(
+    value(nodeSections({ corners: { radius: [full, full, 4, 0] } }), 'Appearance', 'Corner radius'),
+    'Full Full 4px 0px',
+  );
+});
+
 test('groups a layer’s fields into sections, skipping empty ones', () => {
   const sections = nodeSections({
     id: 'n2',
