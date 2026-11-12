@@ -9,7 +9,9 @@ import type { JSONObject } from './format.ts';
 import {
   allNodes,
   bounds,
+  everyNode,
   isInFrame,
+  isMissingAsset,
   nodeForAnnotation,
   resolvedFields,
   styleKeys,
@@ -39,6 +41,7 @@ export function outline(frame: Sketchframe, start: Node = frame.root, options: O
       typeof node.raw.rotation === 'number' ? `↻${node.raw.rotation}°` : '',
       typeof node.raw.text === 'string' ? JSON.stringify(truncate(node.raw.text, 40)) : '',
       notes.get(node.id) ? `✎${notes.get(node.id)}` : '',
+      isMissingAsset(frame, node) ? '⚠ asset missing' : '',
     ].filter(Boolean);
     lines.push(
       `${'  '.repeat(depth)}${node.name || '(unnamed)'} [${node.type}]${position} ${num(node.size.width)}×${num(node.size.height)} ${node.id}${
@@ -65,10 +68,28 @@ export function summary(frame: Sketchframe): string {
       (frame.components.length ? `, ${frame.components.length} components` : '') +
       (frame.annotations.length ? `, ${frame.annotations.length} annotations` : ''),
     `Preview: ${frame.preview.src}, ${pixelWidth}×${pixelHeight} px at ${scale}x; the frame starts ${num(frame.frameOrigin.x)},${num(frame.frameOrigin.y)} pt into it.`,
+    missingAssetsLine(frame),
     typeof frame.design.generator === 'string' ? `Exported by ${frame.design.generator}${typeof frame.design.exportedAt === 'string' ? ` at ${frame.design.exportedAt}` : ''}.` : '',
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+/**
+ * Says which vectors the exporter couldn't turn into SVG, so an agent knows
+ * to rebuild them rather than leave a blank box. Empty when there are none.
+ */
+function missingAssetsLine(frame: Sketchframe): string {
+  const missing = frame.missingAssets;
+  if (!missing.length) return '';
+  const nodes = everyNode(frame);
+  const names = missing.map((asset) => {
+    const node = nodes.find((each) => each.id === asset.id);
+    const name = (node?.path.join('/') || asset.name || node?.name) ?? '';
+    return name ? `${name} (${asset.id})` : asset.id;
+  });
+  const count = missing.length === 1 ? "1 vector couldn't" : `${missing.length} vectors couldn't`;
+  return `${count} be exported (${names.join(', ')}); rebuild ${missing.length === 1 ? 'it' : 'them'} from the preview or ask for the asset.`;
 }
 
 // MARK: Node context
@@ -113,6 +134,14 @@ export function nodeContext(frame: Sketchframe, node: Node, options: NodeOptions
       })
     : [];
 
+  const missingAssets = subtree
+    .filter((each) => isMissingAsset(frame, each))
+    .map((each) => ({
+      id: each.id,
+      name: each.name,
+      note: "This vector couldn't be exported as SVG, so it has no src. Rebuild it from the preview (get_screenshot) or ask for the asset.",
+    }));
+
   return clean({
     id: node.id,
     name: node.name,
@@ -126,6 +155,7 @@ export function nodeContext(frame: Sketchframe, node: Node, options: NodeOptions
     reusedStyles: keys.length ? keys : undefined,
     sharedStyles: sharedStyles.length ? sharedStyles : undefined,
     annotations: annotations.length ? annotations : undefined,
+    missingAssets: missingAssets.length ? missingAssets : undefined,
     node: tree(node, 0),
   });
 }

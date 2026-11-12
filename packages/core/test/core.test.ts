@@ -24,6 +24,7 @@ import {
   previewRegion,
   readArchive,
   requireNode,
+  summary,
   tokens,
   updateArchive,
   writeArchive,
@@ -189,6 +190,53 @@ test('generates HTML with token variables', () => {
   assert.match(html, /background: var\(--brand-blue, #3b5bdb\)/);
   assert.match(html, /transform: rotate\(90deg\)/);
   assert.match(html, /<p class="label"[^>]*>New<\/p>/);
+});
+
+/** The fixture with one more vector, `Icon/Close`, that the exporter couldn't turn into SVG. */
+function fixtureWithMissingVector(listed = true) {
+  const files = folderFiles(fixture);
+  const design = JSON.parse(new TextDecoder().decode(files.read('design.json')!));
+  design.root.children.push({ id: 'n9', name: 'Icon/Close', type: 'vector', x: 176, y: 8, width: 16, height: 16 });
+  if (listed) design.missingAssets = [{ id: 'n9', name: 'Icon/Close' }];
+  const entries = new Map(files.paths().map((path) => [path, files.read(path)!]));
+  entries.set('design.json', strToU8(JSON.stringify(design)));
+  return loadSketchframe(archiveFiles(writeArchive(entries)));
+}
+
+test('outline, node context and HTML say when a vector is missing', () => {
+  const frame = fixtureWithMissingVector();
+  assert.deepEqual(frame.missingAssets, [{ id: 'n9', name: 'Icon/Close' }]);
+
+  const header = summary(frame);
+  assert.match(header, /1 vector couldn't be exported \(Icon\/Close \(n9\)\); rebuild it from the preview or ask for the asset\./);
+  assert.match(outline(frame), /Icon\/Close \[vector\] 176,8 16×16 n9  ⚠ asset missing/);
+
+  const context = nodeContext(frame, requireNode(frame, 'n9'));
+  assert.equal((context.missingAssets as { id: string }[])[0].id, 'n9');
+  // The frame's own context lists it too, since it's in the subtree.
+  assert.deepEqual(
+    (nodeContext(frame, frame.root).missingAssets as { id: string }[]).map((asset) => asset.id),
+    ['n9'],
+  );
+  assert.equal(nodeContext(frame, requireNode(frame, 'n2')).missingAssets, undefined);
+
+  const html = htmlForNode(frame, frame.root);
+  assert.match(html, /<!-- vector "Icon\/Close" \(n9\) couldn't be exported; rebuild it from the preview or ask for the asset -->/);
+  assert.match(html, /<div class="icon-close" data-name="Icon\/Close" data-missing-asset><\/div>/);
+});
+
+test('exports without missingAssets read as before', () => {
+  const frame = openSketchframe(fixture);
+  assert.deepEqual(frame.missingAssets, []);
+  assert.doesNotMatch(summary(frame), /couldn't be exported/);
+  assert.doesNotMatch(outline(frame), /asset missing/);
+  assert.equal(nodeContext(frame, frame.root).missingAssets, undefined);
+
+  // An unlisted vector without a src stays an ordinary empty box.
+  const unlisted = fixtureWithMissingVector(false);
+  assert.doesNotMatch(summary(unlisted), /couldn't be exported/);
+  assert.doesNotMatch(outline(unlisted), /asset missing/);
+  assert.doesNotMatch(htmlForNode(unlisted, unlisted.root), /couldn't be exported|data-missing-asset/);
 });
 
 test('cat renders a stable text form without exportedAt', () => {

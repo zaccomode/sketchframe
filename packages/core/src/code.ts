@@ -9,7 +9,7 @@
 
 import { isObject, number, string } from './format.ts';
 import type { JSONObject } from './format.ts';
-import { resolvedFields } from './model.ts';
+import { isMissingAsset, resolvedFields } from './model.ts';
 import type { Node, Sketchframe } from './model.ts';
 
 export function htmlForNode(frame: Sketchframe, node: Node): string {
@@ -156,6 +156,8 @@ export function htmlForNode(frame: Sketchframe, node: Node): string {
     if (isText && textStyle) css.push(...textCSS(textStyle, color));
     if (isText && fields.textBehaviour === 'auto-width') css.push('white-space: nowrap');
     if (isText && Array.isArray(fields.textRuns) && fields.textRuns.length) notes.push('mixed text styles; see textRuns');
+    const missing = isMissingAsset(frame, current);
+    if (missing) notes.push("placeholder for a vector that couldn't be exported");
 
     rules.push(`${notes.length ? `/* ${notes.join('; ')} */\n` : ''}.${name} {\n${css.map((line) => `  ${line};`).join('\n')}\n}`);
 
@@ -166,6 +168,9 @@ export function htmlForNode(frame: Sketchframe, node: Node): string {
     }
     if ((current.type === 'image' || current.type === 'vector') && string(fields.src)) {
       return `${indent}<img class="${name}"${label} src="${attribute(string(fields.src) ?? '')}" alt="${attribute(current.name)}">`;
+    }
+    if (missing) {
+      return `${indent}<!-- vector "${comment(current.name)}" (${current.id}) couldn't be exported; rebuild it from the preview or ask for the asset -->\n${indent}<div class="${name}"${label} data-missing-asset></div>`;
     }
     // Children are back to front, like the DOM; a stack with `firstOnTop`
     // reverses that.
@@ -218,6 +223,11 @@ function px(value: unknown): string {
 
 function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** Keeps a name from closing an HTML comment early. */
+function comment(text: string): string {
+  return text.replace(/--/g, '- -');
 }
 
 function attribute(text: string): string {
