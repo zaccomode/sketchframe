@@ -9,6 +9,7 @@ import { crc32, unzip, zip } from '../src/zip.ts';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 import { cropPNG, pngHeader } from '../src/png.ts';
+import { frameOrigin } from '../src/preview.ts';
 import {
   archiveFiles,
   bounds,
@@ -81,6 +82,27 @@ test('reads an archive and a folder the same way', () => {
   assert.equal(outline(fromArchive), outline(fromFolder));
   assert.equal(fromArchive.annotations.length, 4);
   assert.deepEqual(fromArchive.frameOrigin, { x: 24, y: 16 });
+});
+
+test("measures the frame origin from children's shadows, over a stale recorded one", () => {
+  // From #33: exporters before 0.6.1 only measured the root, so a child's
+  // shadow spilling 26pt left of the frame was recorded as an even split.
+  const root = {
+    width: 530,
+    height: 288,
+    borders: [{ position: 'center', thickness: 1 }],
+    children: [{ x: 24, y: 24, width: 168, height: 32, effects: 'effect_1' }],
+  };
+  const styles = { effect_1: { shadows: [{ x: 0, y: 9, blur: 20 }, { x: 0, y: 83, blur: 50 }, { inset: true, blur: 6 }] } };
+  const overflow = { width: 557 - 530, height: 290 - 288 };
+  assert.deepEqual(frameOrigin({ origin: { x: 13.5, y: 1 } }, root, styles, overflow), { x: 26, y: 1 });
+  assert.deepEqual(frameOrigin({}, root, styles, overflow), { x: 26, y: 1 });
+
+  // When the measurement can't explain the preview (e.g. rotated layers),
+  // the recorded origin is used, else an even split.
+  const unexplained = { width: overflow.width + 10, height: overflow.height };
+  assert.deepEqual(frameOrigin({ origin: { x: 30, y: 1 } }, root, styles, unexplained), { x: 30, y: 1 });
+  assert.deepEqual(frameOrigin({}, root, styles, unexplained), { x: 18.5, y: 1 });
 });
 
 test('reads a zip of a folder package, as Finder compresses one', () => {

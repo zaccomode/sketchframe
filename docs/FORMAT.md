@@ -78,7 +78,7 @@ from `version`.
 
 | Key | Meaning |
 |---|---|
-| `preview` | The rendered frame. If the layer has shadows or outside borders that extend past its bounds, the PNG is larger than `width × scale`. `origin` is where the frame's top-left sits inside the preview, in points (e.g. `{ x: 24, y: 16 }` for a `0 8 24` drop shadow). |
+| `preview` | The rendered frame. If the layer has shadows or outside borders that extend past its bounds, the PNG is larger than `width × scale`. `origin` is where the frame's top-left sits inside the preview, in points (e.g. `{ x: 24, y: 16 }` for a `0 8 24` drop shadow). Readers re-measure it from every node's shadows and borders and prefer that when it accounts for the preview's size, since exporters before 0.6.1 recorded a wrong `origin` when a child's shadow spilled past the frame. |
 | `outline` | One line per node, indented two spaces per depth level: `name [type] x,y w×h id`. Read this first to find a subtree. |
 | `tokens.colors` | The swatches (color variables) the frame uses: name → CSS color. Nodes refer to them through `token` / `colorToken`. |
 | `styles` | Style values that two or more nodes share. A node field that holds a **string** instead of an object or array is a key into this map. |
