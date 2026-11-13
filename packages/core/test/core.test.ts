@@ -193,11 +193,12 @@ test('generates HTML with token variables', () => {
 });
 
 /** The fixture with one more vector, `Icon/Close`, that the exporter couldn't turn into SVG. */
-function fixtureWithMissingVector(listed = true) {
+function fixtureWithMissingVector(listed = true, name = 'Icon/Close', edit?: (design: any) => void) {
   const files = folderFiles(fixture);
   const design = JSON.parse(new TextDecoder().decode(files.read('design.json')!));
-  design.root.children.push({ id: 'n9', name: 'Icon/Close', type: 'vector', x: 176, y: 8, width: 16, height: 16 });
-  if (listed) design.missingAssets = [{ id: 'n9', name: 'Icon/Close' }];
+  design.root.children.push({ id: 'n9', name, type: 'vector', x: 176, y: 8, width: 16, height: 16 });
+  if (listed) design.missingAssets = [{ id: 'n9', name }];
+  edit?.(design);
   const entries = new Map(files.paths().map((path) => [path, files.read(path)!]));
   entries.set('design.json', strToU8(JSON.stringify(design)));
   return loadSketchframe(archiveFiles(writeArchive(entries)));
@@ -223,6 +224,43 @@ test('outline, node context and HTML say when a vector is missing', () => {
   const html = htmlForNode(frame, frame.root);
   assert.match(html, /<!-- vector "Icon\/Close" \(n9\) couldn't be exported; rebuild it from the preview or ask for the asset -->/);
   assert.match(html, /<div class="icon-close" data-name="Icon\/Close" data-missing-asset><\/div>/);
+});
+
+test("a layer name can't close the missing-asset comment early", () => {
+  for (const name of ['-->', '--->', 'a--->b', 'x-', '--!>', '<!-- hi -->', '----<script>alert(1)</script>']) {
+    const frame = fixtureWithMissingVector(true, name);
+    // Rendered from the frame and from the vector itself, whose name then
+    // heads the output too.
+    for (const html of [htmlForNode(frame, frame.root), htmlForNode(frame, requireNode(frame, 'n9'))]) {
+      const comments = html.split('\n').filter((each) => each.trim().startsWith('<!--'));
+      assert.equal(comments.length, 2, html);
+      for (const line of comments) {
+        assert.ok(line.trim().endsWith('-->'), line);
+        assert.doesNotMatch(line.trim().slice('<!--'.length, -'-->'.length), /--|<|>/, `${JSON.stringify(name)} → ${line}`);
+      }
+      assert.equal(html.match(/-->/g)!.length, 2, `${JSON.stringify(name)} → ${html}`);
+    }
+  }
+  // The id is escaped the same way.
+  const frame = fixtureWithMissingVector(true, 'Icon', (design) => {
+    design.root.children.at(-1).id = 'n9-->';
+    design.missingAssets = [{ id: 'n9-->', name: 'Icon' }];
+  });
+  const html = htmlForNode(frame, frame.root);
+  assert.match(html, /\(n9- -&gt;\) couldn't be exported/);
+  assert.equal(html.match(/-->/g)!.length, 2);
+});
+
+test('the summary counts only the vectors the outline marks missing', () => {
+  const frame = fixtureWithMissingVector(true, 'Icon/Close', (design) => {
+    // n2 is listed but has a src; n404 isn't in the tree.
+    design.missingAssets.push({ id: 'n404', name: 'Gone' });
+    const withSrc = design.root.children.find((each: { id: string }) => each.id === 'n9');
+    design.root.children.push({ ...withSrc, id: 'n10', name: 'Icon/Open', src: 'assets/open.svg' });
+    design.missingAssets.push({ id: 'n10', name: 'Icon/Open' });
+  });
+  assert.match(summary(frame), /1 vector couldn't be exported \(Icon\/Close \(n9\)\); rebuild it/);
+  assert.equal(outline(frame).match(/asset missing/g)!.length, 1);
 });
 
 test('exports without missingAssets read as before', () => {
