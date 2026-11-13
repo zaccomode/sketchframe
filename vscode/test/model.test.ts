@@ -43,6 +43,12 @@ test('derives the frame origin from shadows when the export has none', () => {
   assert.deepEqual(parsePackage(JSON.stringify(design), null).frameOrigin, { x: 24, y: 16 });
 });
 
+test('measures the frame origin over a stale recorded one', () => {
+  const design = JSON.parse(read('design.json'));
+  design.preview.origin = { x: 0, y: 0 };
+  assert.deepEqual(parsePackage(JSON.stringify(design), null).frameOrigin, { x: 24, y: 16 });
+});
+
 test('positions nodes relative to their parent', () => {
   assert.deepEqual(rounded(corners(node('n2'))), [
     { x: 20, y: 20 },

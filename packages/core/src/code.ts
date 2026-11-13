@@ -170,7 +170,7 @@ export function htmlForNode(frame: Sketchframe, node: Node): string {
       return `${indent}<img class="${name}"${label} src="${attribute(string(fields.src) ?? '')}" alt="${attribute(current.name)}">`;
     }
     if (missing) {
-      return `${indent}<!-- vector "${comment(current.name)}" (${current.id}) couldn't be exported; rebuild it from the preview or ask for the asset -->\n${indent}<div class="${name}"${label} data-missing-asset></div>`;
+      return `${indent}<!-- vector "${comment(current.name)}" (${comment(current.id)}) couldn't be exported; rebuild it from the preview or ask for the asset -->\n${indent}<div class="${name}"${label} data-missing-asset></div>`;
     }
     // Children are back to front, like the DOM; a stack with `firstOnTop`
     // reverses that.
@@ -192,7 +192,7 @@ export function htmlForNode(frame: Sketchframe, node: Node): string {
     .sort()
     .map((token) => `  ${tokenVariable(token)}: ${frame.colors[token]}; /* token "${token}" */`);
   const style = [variables.length ? `:root {\n${variables.join('\n')}\n}` : '', ...rules].filter(Boolean).join('\n\n');
-  return `<!-- "${node.name}" (${node.id}) from ${frame.name}.sketchframe. Image paths are inside the Sketchframe. -->\n<style>\n${style}\n</style>\n\n${html}\n`;
+  return `<!-- "${comment(node.name)}" (${comment(node.id)}) from ${comment(frame.name)}.sketchframe. Image paths are inside the Sketchframe. -->\n<style>\n${style}\n</style>\n\n${html}\n`;
 }
 
 function textCSS(style: JSONObject, color: (value: unknown, token: unknown) => string): string[] {
@@ -225,9 +225,13 @@ function escape(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Keeps a name from closing an HTML comment early. */
+/**
+ * Keeps text from closing an HTML comment early. Escaping `<` and `>` rules
+ * out `-->`, `--!>` needs `--`, and splitting every dash that's followed by
+ * another leaves no `--` however long the run.
+ */
 function comment(text: string): string {
-  return text.replace(/--/g, '- -');
+  return escape(text).replace(/-(?=-)/g, '- ');
 }
 
 function attribute(text: string): string {
