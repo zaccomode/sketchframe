@@ -27,6 +27,7 @@ import {
   requireNode,
   summary,
   tokens,
+  tokenVariable,
   updateArchive,
   writeArchive,
   annotations,
@@ -136,6 +137,27 @@ test('finds nodes by id, sketchId, path and unique name', () => {
   // "Label" is in the frame and in the Badge component.
   assert.throws(() => requireNode(frame, 'Label'), /2 layers are named "Label" \(n6, n8\)/);
   assert.throws(() => requireNode(frame, 'Nope'), /No layer matches/);
+});
+
+test('token variables trim outer dashes', () => {
+  assert.equal(tokenVariable('Primary/500'), '--primary-500');
+  assert.equal(tokenVariable('--Brand  Blue--'), '--brand-blue');
+  assert.equal(tokenVariable('///'), '--token');
+});
+
+test('layer paths trim outer slashes only, in linear time', () => {
+  const frame = openSketchframe(fixture);
+  assert.equal(findNode(frame, '//Tilted/Inner')?.id, 'n4');
+  assert.equal(findNode(frame, 'Tilted/Inner//')?.id, 'n4');
+  assert.equal(findNode(frame, '/Tilted/')?.id, findNode(frame, 'Tilted')?.id);
+  // An empty middle segment still matches nothing.
+  assert.equal(findNode(frame, 'Tilted//Inner'), undefined);
+  // A long run of inner slashes used to take quadratic time to trim.
+  for (const query of ['a' + '/'.repeat(100_000) + 'x', '/'.repeat(100_000) + 'x', 'x' + '/'.repeat(100_000)]) {
+    const start = performance.now();
+    assert.equal(findNode(frame, query), undefined);
+    assert.ok(performance.now() - start < 100, `${query.length} characters took ${Math.round(performance.now() - start)} ms`);
+  }
 });
 
 test('bounds follow rotation', () => {
@@ -260,7 +282,7 @@ test("a layer name can't close the missing-asset comment early", () => {
         assert.ok(line.trim().endsWith('-->'), line);
         assert.doesNotMatch(line.trim().slice('<!--'.length, -'-->'.length), /--|<|>/, `${JSON.stringify(name)} → ${line}`);
       }
-      assert.equal(html.match(/-->/g)!.length, 2, `${JSON.stringify(name)} → ${html}`);
+      assert.equal(html.match(/--!?>/g)!.length, 2, `${JSON.stringify(name)} → ${html}`);
     }
   }
   // The id is escaped the same way.
@@ -270,7 +292,7 @@ test("a layer name can't close the missing-asset comment early", () => {
   });
   const html = htmlForNode(frame, frame.root);
   assert.match(html, /\(n9- -&gt;\) couldn't be exported/);
-  assert.equal(html.match(/-->/g)!.length, 2);
+  assert.equal(html.match(/--!?>/g)!.length, 2);
 });
 
 test('the summary counts only the vectors the outline marks missing', () => {

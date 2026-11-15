@@ -18,11 +18,7 @@ export function htmlForNode(frame: Sketchframe, node: Node): string {
   const classNames = new Map<string, number>();
 
   const className = (current: Node) => {
-    const base =
-      (current.name || current.type)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '') || current.type;
+    const base = trimDashes((current.name || current.type).toLowerCase().replace(/[^a-z0-9]+/g, '-')) || current.type;
     const safe = /^[a-z]/.test(base) ? base : `n-${base}`;
     const count = (classNames.get(safe) ?? 0) + 1;
     classNames.set(safe, count);
@@ -213,7 +209,16 @@ function textCSS(style: JSONObject, color: (value: unknown, token: unknown) => s
 
 /** `Primary/500` → `--primary-500`. */
 export function tokenVariable(token: string): string {
-  return `--${token.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'token'}`;
+  return `--${trimDashes(token.toLowerCase().replace(/[^a-z0-9]+/g, '-')) || 'token'}`;
+}
+
+/** Strips leading and trailing `-` without a regex that can backtrack. */
+function trimDashes(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === '-') start++;
+  while (end > start && text[end - 1] === '-') end--;
+  return text.slice(start, end);
 }
 
 function px(value: unknown): string {
