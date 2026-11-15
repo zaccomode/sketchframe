@@ -80,13 +80,13 @@ export function summary(frame: Sketchframe): string {
  * to rebuild them rather than leave a blank box. Empty when there are none.
  */
 function missingAssetsLine(frame: Sketchframe): string {
-  const missing = frame.missingAssets;
+  // The same nodes the outline, node context and HTML mark, so they agree.
+  const missing = everyNode(frame).filter((node) => isMissingAsset(frame, node));
   if (!missing.length) return '';
-  const nodes = everyNode(frame);
-  const names = missing.map((asset) => {
-    const node = nodes.find((each) => each.id === asset.id);
-    const name = (node?.path.join('/') || asset.name || node?.name) ?? '';
-    return name ? `${name} (${asset.id})` : asset.id;
+  const names = missing.map((node) => {
+    const listed = frame.missingAssets.find((asset) => asset.id === node.id);
+    const name = node.path.join('/') || listed?.name || node.name;
+    return name ? `${name} (${node.id})` : node.id;
   });
   const count = missing.length === 1 ? "1 vector couldn't" : `${missing.length} vectors couldn't`;
   return `${count} be exported (${names.join(', ')}); rebuild ${missing.length === 1 ? 'it' : 'them'} from the preview or ask for the asset.`;

@@ -1,7 +1,7 @@
 {
   "name": "@sketchframe/core",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Reads and writes .sketchframe files with no dependencies: the format, the archive, and the operations the CLI, MCP server and VS Code extension share",
   "type": "module",
   "license": "MIT",

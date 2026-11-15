@@ -220,7 +220,19 @@ export function nodeForAnnotation(frame: Sketchframe, annotation: SketchframeAnn
 
 /** True if the exporter recorded this node's asset as missing (see `missingAssets`). */
 export function isMissingAsset(frame: Sketchframe, node: Node): boolean {
-  return node.raw.src === undefined && frame.missingAssets.some((asset) => asset.id === node.id);
+  return node.raw.src === undefined && missingAssetIds(frame).has(node.id);
+}
+
+const missingAssetIdCache = new WeakMap<MissingAsset[], Set<string>>();
+
+/** `missingAssets`' ids, built once per list. */
+function missingAssetIds(frame: Sketchframe): Set<string> {
+  let ids = missingAssetIdCache.get(frame.missingAssets);
+  if (!ids) {
+    ids = new Set(frame.missingAssets.map((asset) => asset.id));
+    missingAssetIdCache.set(frame.missingAssets, ids);
+  }
+  return ids;
 }
 
 /** Top-left, top-right, bottom-right, bottom-left in the root's space. */

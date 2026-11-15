@@ -555,51 +555,90 @@ nonisolated struct SketchframePackage: Sendable {
             }
     }
 
-    /// Uses `preview.origin` when the exporter recorded it. Older exports
-    /// don't have it, so it's derived from the root's shadows and borders
-    /// (which Sketch renders outside the frame), falling back to an even split
-    /// when that doesn't account for all of the overflow.
+    /// Measures where the frame sits the way the exporter does: every
+    /// node's frame, grown by its outer shadows and outside/centre borders
+    /// (Sketch renders those of descendants too, even inside a clipping
+    /// frame), rounded outwards to whole points. On an axis where that
+    /// matches the preview, the measurement wins, since exporters before 0.6.1
+    /// only measured the root and recorded a wrong `preview.origin` when a
+    /// child's shadow spilled out. Otherwise `preview.origin` is used when
+    /// recorded, else the overflow is assumed to be split evenly. Mirrors
+    /// `frameOrigin` in packages/core/src/preview.ts.
     private static func frameOrigin(
         preview: [String: Any],
         root: [String: Any],
         styles: [String: Any],
         overflow: CGSize
     ) -> CGPoint {
+        var fallback = CGPoint(x: overflow.width / 2, y: overflow.height / 2)
         if let origin = preview["origin"] as? [String: Any],
            let x = number(origin["x"]), let y = number(origin["y"]) {
-            return CGPoint(x: x, y: y)
+            fallback = CGPoint(x: x, y: y)
         }
 
-        func resolved(_ field: String) -> Any? {
-            if let key = root[field] as? String { return styles[key] }
-            return root[field]
-        }
-
-        var left = 0.0, top = 0.0, right = 0.0, bottom = 0.0
-        func extend(_ l: Double, _ t: Double, _ r: Double, _ b: Double) {
-            left = max(left, l); top = max(top, t); right = max(right, r); bottom = max(bottom, b)
-        }
-
-        let effects = resolved("effects") as? [String: Any]
-        for shadow in effects?["shadows"] as? [[String: Any]] ?? [] where shadow["inset"] as? Bool != true {
-            let x = number(shadow["x"]) ?? 0
-            let y = number(shadow["y"]) ?? 0
-            let reach = (number(shadow["blur"]) ?? 0) + (number(shadow["spread"]) ?? 0)
-            extend(reach - x, reach - y, reach + x, reach + y)
-        }
-        for border in resolved("borders") as? [[String: Any]] ?? [] {
-            let thickness = number(border["thickness"]) ?? 0
-            switch border["position"] as? String {
-            case "outside": extend(thickness, thickness, thickness, thickness)
-            case "center": extend(thickness / 2, thickness / 2, thickness / 2, thickness / 2)
-            default: break
-            }
-        }
+        let width = number(root["width"]) ?? 0
+        let height = number(root["height"]) ?? 0
+        let bounds = renderedBounds(root: root, styles: styles)
+        let left = bounds.left.rounded(.down)
+        let top = bounds.top.rounded(.down)
+        let measuredWidth = bounds.right.rounded(.up) - left
+        let measuredHeight = bounds.bottom.rounded(.up) - top
+        let previewWidth = width + Double(overflow.width)
+        let previewHeight = height + Double(overflow.height)
 
         return CGPoint(
-            x: abs(left + right - overflow.width) <= 1 ? left : overflow.width / 2,
-            y: abs(top + bottom - overflow.height) <= 1 ? top : overflow.height / 2
+            x: abs(measuredWidth - previewWidth) <= 1 ? -left : Double(fallback.x),
+            y: abs(measuredHeight - previewHeight) <= 1 ? -top : Double(fallback.y)
         )
+    }
+
+    /// The area the root and its descendants draw into, in the root's
+    /// coordinates.
+    private static func renderedBounds(
+        root: [String: Any],
+        styles: [String: Any]
+    ) -> (left: Double, top: Double, right: Double, bottom: Double) {
+        var minX: Double = 0, minY: Double = 0
+        var maxX: Double = number(root["width"]) ?? 0, maxY: Double = number(root["height"]) ?? 0
+        func include(_ l: Double, _ t: Double, _ r: Double, _ b: Double) {
+            minX = min(minX, l); minY = min(minY, t); maxX = max(maxX, r); maxY = max(maxY, b)
+        }
+        // Shared values are stored once under `styles` and referenced by key.
+        func resolved(_ node: [String: Any], _ field: String) -> Any? {
+            if let key = node[field] as? String { return styles[key] }
+            return node[field]
+        }
+
+        func visit(_ node: [String: Any], _ parentX: Double, _ parentY: Double, isRoot: Bool) {
+            let x: Double = parentX + (isRoot ? 0 : (number(node["x"]) ?? 0))
+            let y: Double = parentY + (isRoot ? 0 : (number(node["y"]) ?? 0))
+            let right: Double = x + (number(node["width"]) ?? 0)
+            let bottom: Double = y + (number(node["height"]) ?? 0)
+
+            let effects = resolved(node, "effects") as? [String: Any]
+            for shadow in effects?["shadows"] as? [[String: Any]] ?? [] where shadow["inset"] as? Bool != true {
+                let dx = number(shadow["x"]) ?? 0
+                let dy = number(shadow["y"]) ?? 0
+                let reach = (number(shadow["blur"]) ?? 0) + (number(shadow["spread"]) ?? 0)
+                include(x + dx - reach, y + dy - reach, right + dx + reach, bottom + dy + reach)
+            }
+            for border in resolved(node, "borders") as? [[String: Any]] ?? [] {
+                let thickness = number(border["thickness"]) ?? 0
+                let reach: Double
+                switch border["position"] as? String {
+                case "outside": reach = thickness
+                case "center": reach = thickness / 2
+                default: reach = 0
+                }
+                include(x - reach, y - reach, right + reach, bottom + reach)
+            }
+
+            for child in node["children"] as? [[String: Any]] ?? [] {
+                visit(child, x, y, isRoot: false)
+            }
+        }
+        visit(root, 0, 0, isRoot: true)
+        return (minX, minY, maxX, maxY)
     }
 
     private static func number(_ value: Any?) -> Double? {
