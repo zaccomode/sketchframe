@@ -193,11 +193,24 @@ export function findNode(frame: Sketchframe, query: string): Node | undefined {
   if (trimmed === '' || trimmed === '/') return frame.root;
   const byId = nodes.find((node) => node.id === trimmed) ?? nodes.find((node) => node.sketchId === trimmed);
   if (byId) return byId;
-  const path = trimmed.replace(/^\/+|\/+$/g, '').split('/');
+  const path = trimSlashes(trimmed).split('/');
   const byPath = frameNodes.find((node) => node.path.length === path.length && node.path.every((name, i) => name === path[i]));
   if (byPath) return byPath;
   const byName = nodes.filter((node) => node.name === trimmed);
   return byName.length === 1 ? byName[0] : undefined;
+}
+
+/**
+ * Strips leading and trailing `/` with index loops: a regex like
+ * `/^\/+|\/+$/g` rescans a run of inner slashes from every position, which
+ * is quadratic in the query's length.
+ */
+function trimSlashes(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === '/') start++;
+  while (end > start && text[end - 1] === '/') end--;
+  return text.slice(start, end);
 }
 
 /** Like `findNode`, but throws a message that says how to find a node instead. */
