@@ -23,6 +23,7 @@ import {
 } from './model.ts';
 import type { AnnotationCategory, SketchframeAnnotation, SketchframeNode, SketchframePackage } from './model.ts';
 import { svgPath } from './outline.ts';
+import { safePreviewUrl } from './preview-url.ts';
 import { tokenSections } from './properties.ts';
 import type { PropertyRow, PropertySection } from './properties.ts';
 
@@ -34,6 +35,7 @@ type VSCodeAPI = {
 declare function acquireVsCodeApi(): VSCodeAPI;
 
 const vscode = acquireVsCodeApi();
+const resourceOrigin = document.querySelector<HTMLMetaElement>('meta[name="sketchframe-resource-origin"]')?.content ?? '';
 
 const tabs = [
   { id: 'layers', title: 'Layers' },
@@ -225,7 +227,7 @@ function load(design: string, annotations: string | null, previewUrl: string | n
     state.pkg = pkg;
     state.annotations = pkg.annotations;
     state.error = undefined;
-    state.previewUrl = previewUrl ?? '';
+    state.previewUrl = safePreviewUrl(previewUrl, resourceOrigin);
     // Node ids are renumbered on re-export, so a reload keeps only the
     // selections that still exist.
     for (const tab of ['layers', 'components'] as const) {

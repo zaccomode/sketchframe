@@ -217,12 +217,17 @@ export class Viewer implements vscode.Disposable {
       `font-src ${webview.cspSource}`,
       `script-src 'nonce-${nonce}'`,
     ].join('; ');
+    // The origin the webview accepts a preview URL from: a folder package's
+    // webview URIs. Written into the page, not posted, so a message can't
+    // widen it. An archive's preview is a data URI and needs none.
+    const resourceOrigin = this.kind === 'folder' ? new URL(webview.asWebviewUri(this.packageUri).toString()).origin : '';
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="sketchframe-resource-origin" content="${escapeAttribute(resourceOrigin)}">
   <link rel="stylesheet" href="${dist('webview.css')}">
 </head>
 <body>
@@ -230,6 +235,10 @@ export class Viewer implements vscode.Disposable {
 </body>
 </html>`;
   }
+}
+
+function escapeAttribute(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** design.json's `preview.src`, or the default when it can't be read. */
