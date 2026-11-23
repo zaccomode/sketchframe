@@ -2,12 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/sketch-hq/SketchAPI/develop/docs/sketch-plugin-manifest-schema.json",
   "name": "Sketchframe",
   "description": "Export a frame as a .sketchframe package (PNG preview + JSON design tree) for AI agents",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "identifier": "com.isaacshea.sketchframe",
   "appcast": "https://github.com/zaccomode/sketchframe/releases/latest/download/sketchframe-plugin.json",
   "commands": [
     {
-      "name": "Export Selected Frame…",
+      "name": "Export Selected Frames…",
       "identifier": "sketchframe.export",
       "script": "./export-frame.js",
       "shortcut": ""
