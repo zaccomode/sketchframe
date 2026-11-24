@@ -87,8 +87,9 @@ function droppedNote(dropped) {
 function droppedSentence(dropped) {
   const names = dropped.slice(0, 3).map((name) => `“${name}”`);
   if (dropped.length > 3) names.push(`and ${dropped.length - 3} more`);
-  return `${names.join(", ")} replaced ${dropped.length === 1 ? "a file" : "files"} from a different frame, so ${
-    dropped.length === 1 ? "its" : "their"
+  const one = dropped.length === 1;
+  return `The existing ${names.join(", ")} ${one ? "was" : "were"} exported from a different frame, so ${
+    one ? "its" : "their"
   } annotations weren't kept.`;
 }
 
