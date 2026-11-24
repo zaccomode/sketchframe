@@ -8,7 +8,7 @@ Sketchframes are especially useful for folks who utilise AI in their work, as th
 
 To create a Sketchframe, you'll need to install the Sketch plugin.
 
-To export a frame as a `.sketchframe`, use Plugins > Sketchframe > Export Selected Frame..., then select the destination folder.
+To export a frame as a `.sketchframe`, select it and use Plugins > Sketchframe > Export Selected Frames..., then choose where to save it. Select several frames to export them all at once: choose a folder, and each frame is saved there as its own `.sketchframe`, named after the frame.
 
 A `.sketchframe` is a single file (a zip archive, like `.docx` or `.sketch`), so it can be shared through Slack, email or any cloud storage, and committed to git. Without the Sketchframe app it can be opened like any zip archive. Older exports are folders with the same files inside; everything below still reads those, and re-exporting over one replaces it with a single file.
 
