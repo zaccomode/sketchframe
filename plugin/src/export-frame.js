@@ -1,6 +1,8 @@
 import sketch from "sketch";
 import { exportFrame } from "./export";
-import { writePackage } from "./package-writer";
+import { existingRootSketchId, writePackage } from "./package-writer";
+import { assignFileNames, isNumberedName, safeFileName } from "./file-names";
+import { hash } from "./utils/hash";
 
 const NSModalResponseOK = 1;
 const NSAlertFirstButtonReturn = 1000;
@@ -30,11 +32,13 @@ export default function () {
   const written = [];
   const failures = [];
   const missing = [];
+  const annotationsDropped = [];
   layers.forEach((layer, index) => {
     try {
       const result = exportFrame(layer);
-      writePackage(destinations[index], result);
+      const outcome = writePackage(destinations[index], result);
       written.push(destinations[index]);
+      if (outcome && outcome.annotationsDropped) annotationsDropped.push(fileName(destinations[index]));
       (result.design.missingAssets || []).forEach((asset) => missing.push(asset));
     } catch (e) {
       console.error(e);
@@ -53,7 +57,7 @@ export default function () {
       const e = failures[0].error;
       sketch.UI.alert("Sketchframe export failed", String((e && e.stack) || e));
     } else {
-      sketch.UI.message(`Exported “${layers[0].name}”${missingNote(missing)}`);
+      sketch.UI.message(`Exported “${layers[0].name}”${missingNote(missing)}${droppedNote(annotationsDropped)}`);
     }
     return;
   }
@@ -66,11 +70,30 @@ export default function () {
       .join("\n\n");
     sketch.UI.alert(
       `Sketchframe exported ${written.length} of ${layers.length} frames`,
-      `${failures.length === 1 ? "This frame" : "These frames"} couldn't be exported:\n\n${details}`
+      `${failures.length === 1 ? "This frame" : "These frames"} couldn't be exported:\n\n${details}` +
+        (annotationsDropped.length ? `\n\n${droppedSentence(annotationsDropped)}` : "")
     );
     return;
   }
-  sketch.UI.message(`Exported ${written.length} frames${missingNote(missing)}`);
+  sketch.UI.message(`Exported ${written.length} frames${missingNote(missing)}${droppedNote(annotationsDropped)}`);
+}
+
+// Annotations aren't carried into a file that was exported from a different
+// frame (see writePackage), so say which files lost theirs.
+function droppedNote(dropped) {
+  return dropped.length ? `. ${droppedSentence(dropped)}` : "";
+}
+
+function droppedSentence(dropped) {
+  const names = dropped.slice(0, 3).map((name) => `“${name}”`);
+  if (dropped.length > 3) names.push(`and ${dropped.length - 3} more`);
+  return `${names.join(", ")} replaced ${dropped.length === 1 ? "a file" : "files"} from a different frame, so ${
+    dropped.length === 1 ? "its" : "their"
+  } annotations weren't kept.`;
+}
+
+function fileName(filePath) {
+  return String(filePath).split("/").pop();
 }
 
 // " (2 vectors couldn't be exported: Icon/Close, Logo)", or "" if none were missed.
@@ -108,55 +131,85 @@ function chooseFolder(layers) {
   if (panel.runModal() != NSModalResponseOK) return null;
   const folder = String(panel.URL().path());
 
-  const names = uniqueFileNames(layers.map((layer) => safeFileName(layer.name)));
+  const names = folderFileNames(folder, layers);
   const paths = names.map((name) => `${folder}/${name}.${EXTENSION}`);
 
   // The open panel, unlike the save panel, doesn't ask before replacing.
   const fileManager = NSFileManager.defaultManager();
-  const existing = names.filter((name, index) => fileManager.fileExistsAtPath(paths[index]));
+  const existing = [];
+  names.forEach((name, index) => {
+    if (!fileManager.fileExistsAtPath(paths[index])) return;
+    existing.push({ name, sameFrame: existingRootSketchId(paths[index]) === frameSketchId(layers[index]) });
+  });
   if (existing.length && !confirmReplace(existing)) return null;
   return paths;
 }
 
-// Frames often share a name ("Desktop", "Mobile" on several pages). Numbers
-// the repeats, "Name 2", "Name 3", comparing without case as macOS does.
-function uniqueFileNames(names) {
-  const taken = {};
-  names.forEach((name) => {
-    taken[name.toLowerCase()] = true;
-  });
-  const seen = {};
-  return names.map((name) => {
-    const key = name.toLowerCase();
-    if (!seen[key]) {
-      seen[key] = true;
-      return name;
-    }
-    let n = 2;
-    while (taken[`${key} ${n}`]) n += 1;
-    const unique = `${name} ${n}`;
-    taken[unique.toLowerCase()] = true;
-    return unique;
-  });
+// The `sketchId` the frame's root node gets in design.json (see walker.js).
+function frameSketchId(layer) {
+  return hash(String(layer.id));
+}
+
+// A file name per layer; see assignFileNames.
+function folderFileNames(folder, layers) {
+  const frames = layers.map((layer) => ({ base: safeFileName(layer.name), sketchId: frameSketchId(layer) }));
+  const previous = previousFileNames(
+    folder,
+    frames.map(({ base }) => base)
+  );
+  return assignFileNames(frames, previous);
+}
+
+// Root `sketchId` → base file name, for the Sketchframes already in the folder
+// that one of these frames could have been written to.
+function previousFileNames(folder, bases) {
+  const found = {};
+  const contents = NSFileManager.defaultManager().contentsOfDirectoryAtPath_error(folder, null);
+  if (!contents) return found;
+  const suffix = `.${EXTENSION}`;
+  for (let i = 0; i < contents.count(); i++) {
+    const file = String(contents.objectAtIndex(i));
+    if (!file.toLowerCase().endsWith(suffix)) continue;
+    const base = file.slice(0, -suffix.length);
+    if (!bases.some((candidate) => isNumberedName(base, candidate))) continue;
+    const sketchId = existingRootSketchId(`${folder}/${file}`);
+    if (sketchId && !Object.prototype.hasOwnProperty.call(found, sketchId)) found[sketchId] = base;
+  }
+  return found;
 }
 
 function confirmReplace(existing) {
   const alert = NSAlert.alloc().init();
-  const listed = existing.slice(0, 5).map((name) => `${name}.${EXTENSION}`);
+  const listed = existing.slice(0, 5).map(({ name }) => `${name}.${EXTENSION}`);
   if (existing.length > 5) listed.push(`and ${existing.length - 5} more`);
   alert.setMessageText(
     existing.length === 1
-      ? `“${existing[0]}.${EXTENSION}” already exists. Replace it?`
+      ? `“${existing[0].name}.${EXTENSION}” already exists. Replace it?`
       : `${existing.length} of these Sketchframes already exist. Replace them?`
   );
   alert.setInformativeText(
-    `${existing.length === 1 ? "" : `${listed.join("\n")}\n\n`}Annotations in the existing files are kept.`
+    `${existing.length === 1 ? "" : `${listed.join("\n")}\n\n`}${annotationsNote(existing)}`
   );
   alert.addButtonWithTitle("Replace");
   alert.addButtonWithTitle("Cancel");
   return alert.runModal() == NSAlertFirstButtonReturn;
 }
 
-function safeFileName(name) {
-  return String(name).replace(/[/:]/g, "-").trim() || "Frame";
+// What replacing does to annotations: they're kept only where the existing
+// file was exported from the same frame.
+function annotationsNote(existing) {
+  const other = existing.filter(({ sameFrame }) => !sameFrame);
+  if (!other.length) {
+    return existing.length === 1 ? "Annotations in the existing file are kept." : "Annotations in the existing files are kept.";
+  }
+  if (other.length === existing.length) {
+    return existing.length === 1
+      ? "It was exported from a different frame, so any annotations in it won't be kept."
+      : "They were exported from different frames, so any annotations in them won't be kept.";
+  }
+  const names = other.slice(0, 5).map(({ name }) => `${name}.${EXTENSION}`);
+  if (other.length > 5) names.push(`and ${other.length - 5} more`);
+  return `Annotations are kept, except in ${names.join(", ")}: ${
+    other.length === 1 ? "it was" : "these were"
+  } exported from a different frame.`;
 }
