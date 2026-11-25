@@ -22,8 +22,16 @@ const STORED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif"];
 //   └── assets/
 //
 // packages/core/src/archive.ts writes the same layout for the CLI.
+//
+// Returns `{ annotationsDropped }`: true when the file being replaced had
+// annotations but was exported from a different frame, so they weren't kept.
 export function writePackage(packagePath, { design, preview, assets }) {
-  const annotations = existingAnnotations(packagePath);
+  const existing = readExisting(packagePath);
+  // Annotations point at layers by `sketchId`. Carried into a different
+  // frame's export they would describe a design that isn't there.
+  const sameFrame = existing.rootSketchId === design.root.sketchId;
+  const annotations = sameFrame ? existing.annotations : undefined;
+  const annotationsDropped = Boolean(existing.annotations) && !sameFrame;
 
   const entries = [
     ["README.md", readme(design)],
@@ -52,26 +60,51 @@ export function writePackage(packagePath, { design, preview, assets }) {
     fileManager.removeItemAtPath_error(packagePath, null);
   }
   fs.writeFileSync(packagePath, Buffer.from(archive.buffer, archive.byteOffset, archive.byteLength));
+  return { annotationsDropped };
 }
 
-// Annotations are user-authored, so they survive a re-export. The app
-// re-attaches them to layers by `sketchId`. Reads them from an existing
-// archive, or from an older folder package.
-function existingAnnotations(packagePath) {
-  if (!fs.existsSync(packagePath)) return undefined;
+// The `sketchId` of the frame an existing Sketchframe was exported from, or
+// undefined if there's no file there or it can't be read.
+export function existingRootSketchId(packagePath) {
+  return readExisting(packagePath, false).rootSketchId;
+}
+
+// Annotations are user-authored, so they survive a re-export of the same
+// frame. The app re-attaches them to layers by `sketchId`. Reads them, and the
+// root frame's `sketchId`, from an existing archive or an older folder package.
+function readExisting(packagePath, withAnnotations = true) {
+  if (!fs.existsSync(packagePath)) return {};
   try {
+    const wanted = withAnnotations ? [DESIGN_FILE, ANNOTATIONS_FILE] : [DESIGN_FILE];
+    const files = {};
     if (isDirectory(packagePath)) {
-      const annotationsPath = `${packagePath}/${ANNOTATIONS_FILE}`;
-      return fs.existsSync(annotationsPath) ? fs.readFileSync(annotationsPath, "utf8") : undefined;
+      wanted.forEach((name) => {
+        const filePath = `${packagePath}/${name}`;
+        if (fs.existsSync(filePath)) files[name] = fs.readFileSync(filePath, "utf8");
+      });
+    } else {
+      const entries = unzipSync(bytes(fs.readFileSync(packagePath)), {
+        filter: (file) => wanted.indexOf(file.name) >= 0,
+      });
+      Object.keys(entries).forEach((name) => {
+        files[name] = strFromU8(entries[name]);
+      });
     }
-    const files = unzipSync(bytes(fs.readFileSync(packagePath)), {
-      filter: (file) => file.name === ANNOTATIONS_FILE,
-    });
-    return files[ANNOTATIONS_FILE] ? strFromU8(files[ANNOTATIONS_FILE]) : undefined;
+    return { rootSketchId: rootSketchId(files[DESIGN_FILE]), annotations: files[ANNOTATIONS_FILE] };
   } catch (e) {
     // Not something we can read (e.g. a file that isn't a Sketchframe); it's
     // being replaced either way.
     console.error(e);
+    return {};
+  }
+}
+
+function rootSketchId(designJSON) {
+  if (!designJSON) return undefined;
+  try {
+    const design = JSON.parse(designJSON);
+    return design && design.root ? design.root.sketchId : undefined;
+  } catch (e) {
     return undefined;
   }
 }

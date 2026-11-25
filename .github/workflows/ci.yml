@@ -51,10 +51,11 @@ jobs:
 
       # --ignore-scripts: postinstall runs skpm-link, which tries to install
       # the plugin into Sketch on the runner.
-      - name: Build the Sketch plugin
+      - name: Build and test the Sketch plugin
         working-directory: plugin
         run: |
           npm ci --ignore-scripts
+          npm test
           npm run build
 
   extension:
