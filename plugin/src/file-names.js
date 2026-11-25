@@ -55,7 +55,10 @@ export function uniqueFileNames(names, reserved = []) {
 // A frame exported to the folder before keeps the file it was given then, so
 // re-exporting same-named frames in a different order can't swap their files
 // (and their annotations). Only a file named after the frame counts: a renamed
-// frame gets a new file. The rest are numbered in selection order.
+// frame gets a new file. The rest are numbered in selection order, past every
+// file in `previous`: those belong to frames (selected or not) that may be
+// exported to them again, so a new frame mustn't take one and drop its
+// annotations.
 export function assignFileNames(frames, previous = {}) {
   const names = [];
   const claimed = new Set();
@@ -71,9 +74,10 @@ export function assignFileNames(frames, previous = {}) {
   frames.forEach((frame, index) => {
     if (names[index] === undefined) unmatched.push(index);
   });
+  const owned = Object.keys(previous).map((sketchId) => previous[sketchId]);
   const unique = uniqueFileNames(
     unmatched.map((index) => frames[index].base),
-    names.filter((name) => name !== undefined)
+    names.filter((name) => name !== undefined).concat(owned)
   );
   unmatched.forEach((index, i) => {
     names[index] = unique[i];
