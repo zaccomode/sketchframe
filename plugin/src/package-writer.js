@@ -1,10 +1,9 @@
 import fs from "@skpm/fs";
 import { Buffer } from "buffer";
-import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
+import { strToU8, zipSync } from "fflate";
 import { PREVIEW_FILE } from "./export";
+import { ANNOTATIONS_FILE, DESIGN_FILE, carryOverAnnotations, parseExisting, readArchiveFiles } from "./annotations";
 
-const DESIGN_FILE = "design.json";
-const ANNOTATIONS_FILE = "annotations.json";
 const MIMETYPE = "application/vnd.sketchframe+zip";
 // Already compressed, so stored rather than deflated again.
 const STORED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif"];
@@ -26,12 +25,7 @@ const STORED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif"];
 // Returns `{ annotationsDropped }`: true when the file being replaced had
 // annotations but was exported from a different frame, so they weren't kept.
 export function writePackage(packagePath, { design, preview, assets }) {
-  const existing = readExisting(packagePath);
-  // Annotations point at layers by `sketchId`. Carried into a different
-  // frame's export they would describe a design that isn't there.
-  const sameFrame = existing.rootSketchId === design.root.sketchId;
-  const annotations = sameFrame ? existing.annotations : undefined;
-  const annotationsDropped = Boolean(existing.annotations) && !sameFrame;
+  const { annotations, annotationsDropped } = carryOverAnnotations(readExisting(packagePath), design.root.sketchId);
 
   const entries = [
     ["README.md", readme(design)],
@@ -69,6 +63,12 @@ export function existingRootSketchId(packagePath) {
   return readExisting(packagePath, false).rootSketchId;
 }
 
+// Whether writing a frame whose root is `rootSketchId` to `packagePath` would
+// drop annotations: the file there has some and came from a different frame.
+export function wouldDropAnnotations(packagePath, rootSketchId) {
+  return carryOverAnnotations(readExisting(packagePath), rootSketchId).annotationsDropped;
+}
+
 // Annotations are user-authored, so they survive a re-export of the same
 // frame. The app re-attaches them to layers by `sketchId`. Reads them, and the
 // root frame's `sketchId`, from an existing archive or an older folder package.
@@ -76,36 +76,21 @@ function readExisting(packagePath, withAnnotations = true) {
   if (!fs.existsSync(packagePath)) return {};
   try {
     const wanted = withAnnotations ? [DESIGN_FILE, ANNOTATIONS_FILE] : [DESIGN_FILE];
-    const files = {};
+    let files = {};
     if (isDirectory(packagePath)) {
       wanted.forEach((name) => {
         const filePath = `${packagePath}/${name}`;
         if (fs.existsSync(filePath)) files[name] = fs.readFileSync(filePath, "utf8");
       });
     } else {
-      const entries = unzipSync(bytes(fs.readFileSync(packagePath)), {
-        filter: (file) => wanted.indexOf(file.name) >= 0,
-      });
-      Object.keys(entries).forEach((name) => {
-        files[name] = strFromU8(entries[name]);
-      });
+      files = readArchiveFiles(bytes(fs.readFileSync(packagePath)), wanted);
     }
-    return { rootSketchId: rootSketchId(files[DESIGN_FILE]), annotations: files[ANNOTATIONS_FILE] };
+    return parseExisting(files);
   } catch (e) {
     // Not something we can read (e.g. a file that isn't a Sketchframe); it's
     // being replaced either way.
     console.error(e);
     return {};
-  }
-}
-
-function rootSketchId(designJSON) {
-  if (!designJSON) return undefined;
-  try {
-    const design = JSON.parse(designJSON);
-    return design && design.root ? design.root.sketchId : undefined;
-  } catch (e) {
-    return undefined;
   }
 }
 
