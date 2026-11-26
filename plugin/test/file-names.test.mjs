@@ -138,3 +138,31 @@ test("assignFileNames gives a renamed frame a file under its new name", () => {
 test("assignFileNames ignores prototype keys in sketchIds", () => {
   assert.deepEqual(assignFileNames([{ base: "A", sketchId: "constructor" }], {}), ["A"]);
 });
+
+test("assignFileNames doesn't give a new frame a file another frame owns", () => {
+  assert.deepEqual(assignFileNames([{ base: "Desktop", sketchId: "b" }], { a: "Desktop" }), ["Desktop 2"]);
+});
+
+test("assignFileNames numbers new frames past files owned by unselected frames", () => {
+  const previous = { a: "Desktop", x: "Desktop 2" };
+  assert.deepEqual(
+    assignFileNames(
+      [
+        { base: "Desktop", sketchId: "a" },
+        { base: "Desktop", sketchId: "b" },
+      ],
+      previous
+    ),
+    ["Desktop", "Desktop 3"]
+  );
+  assert.deepEqual(
+    assignFileNames(
+      [
+        { base: "Desktop", sketchId: "b" },
+        { base: "Desktop", sketchId: "c" },
+      ],
+      previous
+    ),
+    ["Desktop 3", "Desktop 4"]
+  );
+});

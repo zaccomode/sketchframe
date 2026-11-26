@@ -1,6 +1,6 @@
 import sketch from "sketch";
 import { exportFrame } from "./export";
-import { existingRootSketchId, writePackage } from "./package-writer";
+import { existingRootSketchId, wouldDropAnnotations, writePackage } from "./package-writer";
 import { assignFileNames, isNumberedName, safeFileName } from "./file-names";
 import { hash } from "./utils/hash";
 
@@ -21,7 +21,7 @@ export default function () {
     return;
   }
 
-  const destinations = layers.length === 1 ? chooseFile(layers[0].name) : chooseFolder(layers);
+  const destinations = layers.length === 1 ? chooseFile(layers[0]) : chooseFolder(layers);
   if (!destinations) return;
 
   // Sketch 2026.2+ batches layout updates; flush them so geometry is current.
@@ -107,15 +107,30 @@ function missingNote(missing) {
 }
 
 // One frame: a save panel, which names the file and confirms replacing one.
-function chooseFile(name) {
+// Its "Replace?" prompt can't say that annotations will be lost, so when the
+// file it's replacing came from a different frame and has some, ask again.
+function chooseFile(layer) {
   const panel = NSSavePanel.savePanel();
   panel.setTitle("Export Sketchframe");
-  panel.setNameFieldStringValue(`${safeFileName(name)}.${EXTENSION}`);
+  panel.setNameFieldStringValue(`${safeFileName(layer.name)}.${EXTENSION}`);
   panel.setAllowedFileTypes([EXTENSION]);
   panel.setCanCreateDirectories(true);
   panel.setExtensionHidden(false);
   if (panel.runModal() != NSModalResponseOK) return null;
-  return [String(panel.URL().path())];
+  const filePath = String(panel.URL().path());
+  if (wouldDropAnnotations(filePath, frameSketchId(layer)) && !confirmDropAnnotations(fileName(filePath))) return null;
+  return [filePath];
+}
+
+function confirmDropAnnotations(name) {
+  const alert = NSAlert.alloc().init();
+  alert.setMessageText(`Replace “${name}” and lose its annotations?`);
+  alert.setInformativeText(
+    "It was exported from a different frame, so the annotations in it won't be kept. They can't be recovered after it's replaced."
+  );
+  alert.addButtonWithTitle("Replace");
+  alert.addButtonWithTitle("Cancel");
+  return alert.runModal() == NSAlertFirstButtonReturn;
 }
 
 // Several frames: a folder, with each frame written to it under its own name.
