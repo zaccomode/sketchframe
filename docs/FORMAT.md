@@ -161,8 +161,10 @@ Glass blurs add `brightness`, `distortion`, `depth`, `chromaticAberration`,
 Written by the Sketchframe app or the VS Code extension when someone annotates a
 layer. The Sketch plugin keeps it when re-exporting a frame over its own earlier
 export (the existing `design.json`'s `root.sketchId` matches the frame), and
-drops it when the file it replaces came from a different frame (asking first
-when that file has annotations). Agents should treat these
+drops it when the file it replaces came from a different frame, or when that
+file (or its `design.json`) can't be read, so there's no telling which frame it
+came from. It asks first when the file has annotations or can't be read.
+Agents should treat these
 notes as instructions about the layers they're attached to.
 
 ```jsonc
