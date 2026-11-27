@@ -2,7 +2,7 @@ import fs from "@skpm/fs";
 import { Buffer } from "buffer";
 import { strToU8, zipSync } from "fflate";
 import { PREVIEW_FILE } from "./export";
-import { ANNOTATIONS_FILE, DESIGN_FILE, carryOverAnnotations, parseExisting, readArchiveFiles } from "./annotations";
+import { ANNOTATIONS_FILE, DESIGN_FILE, UNREADABLE, carryOverAnnotations, parseExisting, readArchiveFiles } from "./annotations";
 
 const MIMETYPE = "application/vnd.sketchframe+zip";
 // Already compressed, so stored rather than deflated again.
@@ -22,10 +22,14 @@ const STORED_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "webp", "heic", "avif"];
 //
 // packages/core/src/archive.ts writes the same layout for the CLI.
 //
-// Returns `{ annotationsDropped }`: true when the file being replaced had
-// annotations but was exported from a different frame, so they weren't kept.
-export function writePackage(packagePath, { design, preview, assets }) {
-  const { annotations, annotationsDropped } = carryOverAnnotations(readExisting(packagePath), design.root.sketchId);
+// `existing` is what readExisting found at `packagePath`, read once when the
+// export began so the alerts and this agree; it's read here if not given.
+//
+// Returns carryOverAnnotations' `{ annotationsDropped, reason }`: whether the
+// file being replaced had (or may have had) annotations that weren't kept,
+// and why.
+export function writePackage(packagePath, { design, preview, assets }, existing = readExisting(packagePath)) {
+  const { annotations, annotationsDropped, reason } = carryOverAnnotations(existing, design.root.sketchId);
 
   const entries = [
     ["README.md", readme(design)],
@@ -54,28 +58,28 @@ export function writePackage(packagePath, { design, preview, assets }) {
     fileManager.removeItemAtPath_error(packagePath, null);
   }
   fs.writeFileSync(packagePath, Buffer.from(archive.buffer, archive.byteOffset, archive.byteLength));
-  return { annotationsDropped };
+  return { annotationsDropped, reason };
 }
 
-// The `sketchId` of the frame an existing Sketchframe was exported from, or
-// undefined if there's no file there or it can't be read.
-export function existingRootSketchId(packagePath) {
-  return readExisting(packagePath, false).rootSketchId;
-}
-
-// Whether writing a frame whose root is `rootSketchId` to `packagePath` would
-// drop annotations: the file there has some and came from a different frame.
-export function wouldDropAnnotations(packagePath, rootSketchId) {
-  return carryOverAnnotations(readExisting(packagePath), rootSketchId).annotationsDropped;
+// A reader that opens each path at most once per export: choosing file names,
+// the replace alerts and writePackage all ask about the same files.
+export function existingFiles() {
+  const read = {};
+  return (packagePath) => {
+    if (!Object.prototype.hasOwnProperty.call(read, packagePath)) read[packagePath] = readExisting(packagePath);
+    return read[packagePath];
+  };
 }
 
 // Annotations are user-authored, so they survive a re-export of the same
 // frame. The app re-attaches them to layers by `sketchId`. Reads them, and the
 // root frame's `sketchId`, from an existing archive or an older folder package.
-function readExisting(packagePath, withAnnotations = true) {
+// Returns {} when there's no file, and UNREADABLE when there's one that can't
+// be read, which carryOverAnnotations treats as a possible loss.
+export function readExisting(packagePath) {
   if (!fs.existsSync(packagePath)) return {};
   try {
-    const wanted = withAnnotations ? [DESIGN_FILE, ANNOTATIONS_FILE] : [DESIGN_FILE];
+    const wanted = [DESIGN_FILE, ANNOTATIONS_FILE];
     let files = {};
     if (isDirectory(packagePath)) {
       wanted.forEach((name) => {
@@ -87,10 +91,11 @@ function readExisting(packagePath, withAnnotations = true) {
     }
     return parseExisting(files);
   } catch (e) {
-    // Not something we can read (e.g. a file that isn't a Sketchframe); it's
-    // being replaced either way.
+    // A truncated or damaged archive, or a file that isn't a Sketchframe. It's
+    // replaced either way, but whatever annotations it held can't be vouched
+    // for, so the loss is asked about and reported.
     console.error(e);
-    return {};
+    return UNREADABLE;
   }
 }
 
